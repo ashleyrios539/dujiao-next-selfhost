@@ -12,7 +12,7 @@
 #    5. 可选：配置 Nginx 反向代理与 HTTPS
 #    6. 输出测活配置命令与登录信息
 #
-#  可配置项（通过环境变量或直接修改下方变量）：
+#  可配置项（通过环境变量、直接修改下方变量，或按脚本交互提示填写）：
 #    REPO_URL      源码仓库地址
 #    REPO_BRANCH   分支（默认 main）
 #    SRC_DIR       源码目录（/opt/src/dujiao-next）
@@ -23,6 +23,10 @@
 #    ADMIN_PATH    后台路径；留空则随机生成
 #    DJ_ADMIN_USER 初始管理员用户名（默认 admin）
 #    DJ_ADMIN_PASS 初始管理员密码；留空则随机生成并打印
+#
+#  参数：
+#    -y, --yes     非交互模式：跳过交互提示，全部使用默认/环境变量值
+#    -h, --help    显示帮助
 # ============================================================================
 set -euo pipefail
 
@@ -35,7 +39,7 @@ SERVICE_USER="${SERVICE_USER:-dujiao}"
 SERVER_PORT="${SERVER_PORT:-8080}"
 DOMAIN="${DOMAIN:-}"
 ADMIN_PATH="${ADMIN_PATH:-}"
-DJ_ADMIN_USER="${DJ_ADMIN_USER:-admin}"
+DJ_ADMIN_USER="${DJ_ADMIN_USER:-}"
 DJ_ADMIN_PASS="${DJ_ADMIN_PASS:-}"
 
 # ------------------------------ 日志工具 ----------------------------------
@@ -46,6 +50,101 @@ warn() { echo -e "${YELLOW}[WARN]${RESET} $*"; }
 err()  { echo -e "${RED}[ERROR]${RESET} $*" >&2; }
 
 die() { err "$*"; exit 1; }
+
+# ------------------------------ 参数解析 ----------------------------------
+NON_INTERACTIVE=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -y|--yes) NON_INTERACTIVE=1 ;;
+    -h|--help)
+      echo "用法：sudo bash $0 [-y|--yes] [-h|--help]"
+      echo ""
+      echo "  -y, --yes  非交互模式：跳过交互提示，使用环境变量或默认值"
+      echo "  -h, --help 显示本帮助"
+      echo ""
+      echo "交互模式会依次询问：站点域名 / 后台路径 / 管理员用户名 / 管理员密码。"
+      echo "也可通过环境变量预设（如 DOMAIN=shop.example.com sudo bash $0）。"
+      exit 0
+      ;;
+    *) die "未知参数：$1（可用 -y 跳过交互，-h 查看帮助）" ;;
+  esac
+  shift
+done
+
+# ------------------------------ 交互提示 ----------------------------------
+# ask 询问一个可配置项：环境变量已设置则跳过，否则提示并读取。
+#   用法：ask "提示文案" 变量名 默认值
+ask() {
+  local prompt="$1" var="$2" default="$3"
+  if [ -n "${!var:-}" ]; then
+    return 0
+  fi
+  local input
+  printf "${CYAN}[设置]${RESET} %s" "$prompt"
+  read -r input || true
+  input="$(printf '%s' "$input" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  if [ -n "$input" ]; then
+    printf -v "$var" '%s' "$input"
+  elif [ -n "$default" ]; then
+    printf -v "$var" '%s' "$default"
+  fi
+}
+
+# ask_password 询问管理员密码（不回显）；留空则保持为空（稍后自动生成）。
+ask_password() {
+  local var="$1"
+  if [ -n "${!var:-}" ]; then
+    return 0
+  fi
+  local input
+  printf "${CYAN}[设置]${RESET} %s" "初始管理员密码（回车=自动生成强密码）: "
+  read -rs input || true
+  echo ""
+  if [ -n "$input" ]; then
+    printf -v "$var" '%s' "$input"
+  fi
+}
+
+interactive_prompt() {
+  [ "$NON_INTERACTIVE" -eq 1 ] && return 0
+  # 非 TTY（如管道/定时任务）时跳过交互，避免卡在 read 等待
+  [ -t 0 ] || return 0
+
+  echo ""
+  info "==================== 部署配置向导 ===================="
+  info "（直接回车使用默认值；留空的项稍后自动生成）"
+  echo ""
+
+  ask "站点域名（如 shop.example.com，回车=跳过 Nginx/HTTPS）: " DOMAIN ""
+  ask "后台路径（回车=随机生成，如 /dj-xxxxx）: " ADMIN_PATH ""
+  ask "初始管理员用户名（默认 admin）: " DJ_ADMIN_USER "admin"
+  ask_password DJ_ADMIN_PASS
+  echo ""
+}
+
+# 部署前确认
+confirm_deploy() {
+  [ "$NON_INTERACTIVE" -eq 1 ] && return 0
+  [ -t 0 ] || return 0
+
+  echo ""
+  info "==================== 部署配置预览 ===================="
+  echo "  源码目录:   $SRC_DIR"
+  echo "  安装目录:   $INSTALL_DIR"
+  echo "  服务端口:   $SERVER_PORT"
+  echo "  站点域名:   ${DOMAIN:-(不配置 Nginx/HTTPS)}"
+  echo "  后台路径:   ${ADMIN_PATH:-(随机生成)}"
+  echo "  管理员:     ${DJ_ADMIN_USER:-admin}"
+  echo "  管理员密码: ${DJ_ADMIN_PASS:-(自动生成)}"
+  echo ""
+  local confirm
+  read -r -p "  确认开始部署？[Y/n] " confirm || true
+  case "${confirm:-Y}" in
+    Y|y|yes|YES) ;;
+    *) die "已取消部署" ;;
+  esac
+  echo ""
+}
 
 # ------------------------------ 基础检查 ----------------------------------
 [ "$(id -u)" -eq 0 ] || die "请使用 root 运行：sudo bash $0"
@@ -256,7 +355,7 @@ WorkingDirectory=$INSTALL_DIR
 ExecStart=$INSTALL_DIR/dujiao-next
 Restart=on-failure
 RestartSec=3
-Environment=DJ_DEFAULT_ADMIN_USERNAME=$DJ_ADMIN_USER
+Environment=DJ_DEFAULT_ADMIN_USERNAME=${DJ_ADMIN_USER:-admin}
 Environment=DJ_DEFAULT_ADMIN_PASSWORD=$DJ_ADMIN_PASS
 
 [Install]
@@ -331,12 +430,12 @@ print_summary() {
   echo "---------------------------------------------------------------"
   echo "  前台地址： $base_url/"
   echo "  后台地址： $base_url$ADMIN_PATH"
-  echo "  管理员：   $DJ_ADMIN_USER"
+  echo "  管理员：   ${DJ_ADMIN_USER:-admin}"
   if [ "$GENERATED_PASS" = "1" ]; then
     echo "  初始密码： $DJ_ADMIN_PASS   （请立即登录后修改！）"
     echo "  密码已同时写入 $INSTALL_DIR/admin_credentials.txt"
     cat > "$INSTALL_DIR/admin_credentials.txt" <<EOF
-管理员用户名：$DJ_ADMIN_USER
+管理员用户名：${DJ_ADMIN_USER:-admin}
 管理员密码：$DJ_ADMIN_PASS
 后台路径：$ADMIN_PATH
 EOF
@@ -353,7 +452,7 @@ EOF
   echo ""
   echo "  TOKEN=\$(curl -s -X POST $base_url/api/v1/admin/login \\"
   echo "    -H 'Content-Type: application/json' \\"
-  echo "    -d '{\"username\":\"$DJ_ADMIN_USER\",\"password\":\"$DJ_ADMIN_PASS\"}' \\"
+  echo "    -d '{\"username\":\"${DJ_ADMIN_USER:-admin}\",\"password\":\"$DJ_ADMIN_PASS\"}' \\"
   echo "    | sed -n 's/.*\"token\":\"\\([^\"]*\\)\".*/\\1/p')"
   echo ""
   echo "  curl -s -X PUT $base_url/api/v1/admin/settings \\"
@@ -370,6 +469,8 @@ EOF
 }
 
 # ================================ 主流程 ==================================
+interactive_prompt
+confirm_deploy
 install_base
 install_go
 install_node
