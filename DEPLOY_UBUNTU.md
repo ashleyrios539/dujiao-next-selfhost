@@ -4,11 +4,17 @@
 
 适用系统：Ubuntu 22.04 / 24.04（x86_64）。已测试版本：Go 1.26.5、Node.js 24、pnpm 10。
 
-> **快速开始**：仓库自带一键部署脚本 `deploy_ubuntu.sh`，可自动完成依赖安装、源码构建、配置生成、systemd 服务与 Nginx 配置：
+> **快速开始**：仓库自带一键部署脚本 `deploy_ubuntu.sh`，可自动完成依赖安装、源码构建、配置生成、systemd 服务与 Nginx 配置。
 >
 > ```bash
-> # 以 root 运行；按需设置环境变量（如 DOMAIN=shop.example.com）
-> sudo DOMAIN=shop.example.com bash deploy_ubuntu.sh
+> # 交互模式（推荐）：依次询问站点域名 / 后台路径 / 管理员用户名 / 管理员密码，
+> # 并显示配置预览确认后开始部署
+> sudo bash deploy_ubuntu.sh
+>
+> # 非交互模式：全部使用环境变量或默认值
+> sudo -y bash deploy_ubuntu.sh
+> # 或带环境变量预设
+> sudo DOMAIN=shop.example.com DJ_ADMIN_PASS=你的密码 bash deploy_ubuntu.sh
 > ```
 >
 > 也可手动按下列各节逐步部署。
