@@ -91,6 +91,31 @@ func (s *Service) GetUpstreamSyncInterval(fallbackInterval string) (time.Duratio
 	return time.Duration(config.IntervalMinutes) * time.Minute, nil
 }
 
+// GetCardCheckConfig 获取测活设置（优先 settings，空时回退默认）。
+func (s *Service) GetCardCheckConfig() (settingsintegration.CardCheckConfig, error) {
+	fallback := settingsintegration.DefaultCardCheckConfig()
+	if s == nil {
+		return fallback, nil
+	}
+	value, err := s.GetByKey(constants.SettingKeyCardCheckConfig)
+	if err != nil {
+		return fallback, err
+	}
+	if value == nil {
+		return fallback, nil
+	}
+	return settingsintegration.DecodeCardCheckConfig(value, fallback), nil
+}
+
+// UpdateCardCheckConfig 更新测活设置。
+func (s *Service) UpdateCardCheckConfig(config settingsintegration.CardCheckConfig) (settingsintegration.CardCheckConfig, error) {
+	normalized := settingsintegration.NormalizeCardCheckConfig(config)
+	if _, err := s.Update(constants.SettingKeyCardCheckConfig, map[string]interface{}(settingsintegration.EncodeCardCheckConfig(normalized))); err != nil {
+		return settingsintegration.DefaultCardCheckConfig(), err
+	}
+	return normalized, nil
+}
+
 // GetNotificationCenterSetting 获取通知中心配置（优先 settings，空时回退默认）。
 func (s *Service) GetNotificationCenterSetting() (settingsmessaging.NotificationCenterSetting, error) {
 	fallback := settingsmessaging.NotificationCenterDefaultSetting()

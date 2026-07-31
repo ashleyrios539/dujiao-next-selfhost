@@ -118,6 +118,9 @@ func (c *Container) initApplicationServices() {
 		SettingService:        c.SettingService,
 		DefaultEmailConfig:    c.Config.Email,
 		ExternalIdentityStore: c.ExternalIdentityStore,
+		CardSecretStore:       c.CardSecretRepo,
+		ProductStore:          c.ProductRepo,
+		CardChecker:           c.CardCheckClient,
 	})
 	c.CardSecretService = cardsecretapp.NewService(cardsecretapp.ServiceOptions{
 		Secrets:      c.CardSecretRepo,

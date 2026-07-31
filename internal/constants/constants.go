@@ -477,6 +477,15 @@ const (
 
 	SettingKeyCallbackRoutesConfig = "callback_routes_config"
 
+	SettingKeyCardCheckConfig        = "card_check_config"
+	SettingFieldCardCheckEnabled     = "enabled"
+	SettingFieldCardCheckKami        = "kami"
+	SettingFieldCardCheckInterface   = "interface"
+	SettingFieldCardCheckCountry     = "country"
+	SettingFieldCardCheckBuffer      = "buffer"
+	SettingFieldCardCheckTimeout     = "timeout_seconds"
+	SettingFieldCardCheckPollMillis  = "poll_interval_millis"
+
 	SettingKeyHomeAnnouncement   = "home_announcement"
 	SettingFieldPaymentCallback  = "payment_callback"
 	SettingFieldDujiaoPayWebhook = "dujiaopay_webhook"

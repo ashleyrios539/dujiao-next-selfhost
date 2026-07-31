@@ -12,6 +12,7 @@ func TestDefaultSettingRegistryCoversLegacyNormalizedKeys(t *testing.T) {
 	want := []string{
 		constants.SettingKeyAffiliateConfig,
 		constants.SettingKeyCallbackRoutesConfig,
+		constants.SettingKeyCardCheckConfig,
 		constants.SettingKeyDashboardConfig,
 		constants.SettingKeyGoogleAuthConfig,
 		constants.SettingKeyHomeAnnouncement,

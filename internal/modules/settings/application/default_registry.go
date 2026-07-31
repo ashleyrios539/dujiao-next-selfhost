@@ -71,6 +71,10 @@ var defaultSettingRegistry = MustNewRegistry(
 		Normalize: settingsintegration.NormalizeUpstreamSyncConfigJSON,
 	},
 	Definition{
+		Key:       constants.SettingKeyCardCheckConfig,
+		Normalize: settingsintegration.NormalizeCardCheckConfigJSON,
+	},
+	Definition{
 		Key:       constants.SettingKeyCallbackRoutesConfig,
 		Normalize: settingsintegration.NormalizeCallbackRoutesSettingJSON,
 		Effects:   []Effect{EffectInvalidateCallbackRoutesCache},

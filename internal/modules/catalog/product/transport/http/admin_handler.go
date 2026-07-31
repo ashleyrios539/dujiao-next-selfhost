@@ -457,9 +457,10 @@ func (h *AdminProductHandler) UpdateProduct(c *gin.Context) {
 
 // QuickUpdateProductRequest 快速更新商品请求
 type QuickUpdateProductRequest struct {
-	IsActive   *bool `json:"is_active"`
-	SortOrder  *int  `json:"sort_order"`
-	CategoryID *uint `json:"category_id"`
+	IsActive        *bool `json:"is_active"`
+	SortOrder       *int  `json:"sort_order"`
+	CategoryID      *uint `json:"category_id"`
+	CardCheckEnabled *bool `json:"card_check_enabled"`
 }
 
 type UpdateWholesalePricesRequest struct {
@@ -517,6 +518,9 @@ func (h *AdminProductHandler) QuickUpdateProduct(c *gin.Context) {
 	}
 	if req.CategoryID != nil {
 		fields["category_id"] = *req.CategoryID
+	}
+	if req.CardCheckEnabled != nil {
+		fields["card_check_enabled"] = *req.CardCheckEnabled
 	}
 	if len(fields) == 0 {
 		ginutil.RespondError(c, response.CodeBadRequest, "error.bad_request", nil)

@@ -80,6 +80,7 @@ import (
 	walletgormstore "github.com/dujiao-next/internal/modules/wallet/infrastructure/gormstore"
 	"github.com/dujiao-next/internal/queue"
 	"github.com/dujiao-next/internal/shared/mailbrand"
+	cardcheck "github.com/dujiao-next/internal/upstream/cardcheck"
 )
 
 // Container 声明应用运行期共享的依赖表面；具体构造过程按职责拆分在同包装配文件中。
@@ -192,4 +193,6 @@ type Container struct {
 	ComplianceService             *complianceapp.Service
 
 	PaymentProviderRegistry *paymentprovider.Registry
+
+	CardCheckClient *cardcheck.Client
 }

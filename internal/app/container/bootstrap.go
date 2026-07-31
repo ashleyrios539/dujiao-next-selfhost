@@ -19,6 +19,7 @@ import (
 	wechatpayadapter "github.com/dujiao-next/internal/modules/payment/infrastructure/gateway/adapters/wechatpay"
 	paymentprovider "github.com/dujiao-next/internal/modules/payment/infrastructure/gateway/provider"
 	"github.com/dujiao-next/internal/queue"
+	cardcheck "github.com/dujiao-next/internal/upstream/cardcheck"
 )
 
 // NewContainer 初始化应用依赖容器。
@@ -44,6 +45,7 @@ func NewContainer(cfg *config.Config) (*Container, error) {
 		Config:                  cfg,
 		QueueClient:             queueClient,
 		PaymentProviderRegistry: newPaymentProviderRegistry(),
+		CardCheckClient:         cardcheck.New(),
 	}
 	if err := c.initRepositories(); err != nil {
 		return nil, err

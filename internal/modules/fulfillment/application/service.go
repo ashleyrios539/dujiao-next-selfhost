@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -18,7 +19,9 @@ import (
 	"github.com/dujiao-next/internal/config"
 	"github.com/dujiao-next/internal/constants"
 	"github.com/dujiao-next/internal/logger"
+	cardsecretcontract "github.com/dujiao-next/internal/modules/cardsecret/contract"
 	cardsecretdomain "github.com/dujiao-next/internal/modules/cardsecret/domain"
+	productcontract "github.com/dujiao-next/internal/modules/catalog/product/contract"
 	"github.com/dujiao-next/internal/shared/jsonmap"
 )
 
@@ -32,6 +35,9 @@ type Service struct {
 	defaultEmailConfig    config.EmailConfig
 	downstreamCallbackSvc DownstreamCallbackEnqueuer
 	userOAuthIdentityRepo externalidentitycontract.Store
+	cardSecretStore       cardsecretcontract.Repository
+	productStore          productcontract.Repository
+	cardChecker           CardChecker
 }
 
 type BotNotifier interface {
@@ -56,6 +62,9 @@ type Options struct {
 	SettingService        *settingsapp.Service
 	DefaultEmailConfig    config.EmailConfig
 	ExternalIdentityStore externalidentitycontract.Store
+	CardSecretStore       cardsecretcontract.Repository
+	ProductStore          productcontract.Repository
+	CardChecker           CardChecker
 }
 
 // New 创建交付服务。
@@ -70,6 +79,9 @@ func New(
 		settingService:        opts.SettingService,
 		defaultEmailConfig:    opts.DefaultEmailConfig,
 		userOAuthIdentityRepo: opts.ExternalIdentityStore,
+		cardSecretStore:       opts.CardSecretStore,
+		productStore:          opts.ProductStore,
+		cardChecker:           opts.CardChecker,
 	}
 }
 
@@ -234,6 +246,31 @@ func (s *Service) CreateAuto(orderID uint) (*fulfillmentdomain.Fulfillment, erro
 		}
 	}
 
+	// 交付前测活：启用测活的商品在事务外先行检测，死卡/未知卡标记失效，仅活卡进入交付。
+	checkedByKey := make(map[string][]cardsecretdomain.Secret)
+	needsCheck := make(map[uint]bool)
+	if s.cardChecker != nil && s.cardSecretStore != nil && s.productStore != nil && s.settingService != nil {
+		cfg, cfgErr := s.settingService.GetCardCheckConfig()
+		if cfgErr == nil && cfg.Enabled && strings.TrimSpace(cfg.Kami) != "" && strings.TrimSpace(cfg.Interface) != "" {
+			productsNeedingCheck, productErr := s.checkEnabledProducts(order.Items)
+			if productErr != nil {
+				logger.Warnw("fulfillment_card_check_products_failed", "order_id", orderID, "error", productErr)
+				return nil, ErrFulfillmentCreateFailed
+			}
+			if len(productsNeedingCheck) > 0 {
+				needsCheck = productsNeedingCheck
+				byKey, deadIDs, checkErr := s.runCardCheck(context.Background(), order, needsCheck, cfg)
+				if checkErr != nil {
+					logger.Warnw("fulfillment_card_check_failed", "order_id", orderID, "error", checkErr)
+					return nil, ErrFulfillmentCreateFailed
+				}
+				s.markSecretsInvalid(deadIDs)
+				checkedByKey = byKey
+				logger.Infow("fulfillment_card_check_done", "order_id", orderID, "keys", len(byKey), "dead", len(deadIDs))
+			}
+		}
+	}
+
 	now := time.Now()
 	var fulfillment *fulfillmentdomain.Fulfillment
 	err = s.orderStore.WithinTransaction(func(tx ordercontract.Transaction) error {
@@ -259,27 +296,35 @@ func (s *Service) CreateAuto(orderID uint) (*fulfillmentdomain.Fulfillment, erro
 				return ErrFulfillmentInvalid
 			}
 			key := orderdomain.ItemKey(item.ProductID, item.SKUID)
-			cachedReserved := reservedByKey[key]
 			selected := make([]cardsecretdomain.Secret, 0, item.Quantity)
-			if len(cachedReserved) > 0 {
-				take := item.Quantity
-				if len(cachedReserved) < take {
-					take = len(cachedReserved)
+			if needsCheck[item.ProductID] {
+				checked := checkedByKey[key]
+				if len(checked) < item.Quantity {
+					return ErrCardSecretInsufficient
 				}
-				selected = append(selected, cachedReserved[:take]...)
-				reservedByKey[key] = cachedReserved[take:]
-			}
+				selected = append(selected, checked[:item.Quantity]...)
+			} else {
+				cachedReserved := reservedByKey[key]
+				if len(cachedReserved) > 0 {
+					take := item.Quantity
+					if len(cachedReserved) < take {
+						take = len(cachedReserved)
+					}
+					selected = append(selected, cachedReserved[:take]...)
+					reservedByKey[key] = cachedReserved[take:]
+				}
 
-			if len(selected) < item.Quantity {
-				need := item.Quantity - len(selected)
-				availableRows, err := secretRepo.ListAvailableByProduct(item.ProductID, item.SKUID, need)
-				if err != nil {
-					return err
+				if len(selected) < item.Quantity {
+					need := item.Quantity - len(selected)
+					availableRows, err := secretRepo.ListAvailableByProduct(item.ProductID, item.SKUID, need)
+					if err != nil {
+						return err
+					}
+					selected = append(selected, availableRows...)
 				}
-				selected = append(selected, availableRows...)
-			}
-			if len(selected) < item.Quantity {
-				return ErrCardSecretInsufficient
+				if len(selected) < item.Quantity {
+					return ErrCardSecretInsufficient
+				}
 			}
 			secrets = append(secrets, selected...)
 		}

@@ -40,6 +40,7 @@ type Product struct {
 	AutoStockLocked      int64               `gorm:"-" json:"auto_stock_locked"`                                          // 自动发货库存占用量（仅结构，不写入数据库）
 	AutoStockSold        int64               `gorm:"-" json:"auto_stock_sold"`                                            // 自动发货库存已售量（仅结构，不写入数据库）
 	IsMapped             bool                `gorm:"not null;default:false;index" json:"is_mapped"`                       // 是否为对接商品
+	CardCheckEnabled     bool                `gorm:"not null;default:false" json:"card_check_enabled"`                     // 发货前是否自动测活
 	IsActive             bool                `gorm:"default:false;index" json:"is_active"`                                // 是否上架
 	SortOrder            int                 `gorm:"default:0;index" json:"sort_order"`                                   // 排序权重
 	CreatedAt            time.Time           `gorm:"index" json:"created_at"`                                             // 创建时间

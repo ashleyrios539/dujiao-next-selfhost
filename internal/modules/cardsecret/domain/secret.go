@@ -8,6 +8,7 @@ const (
 	StatusAvailable = "available"
 	StatusReserved  = "reserved"
 	StatusUsed      = "used"
+	StatusInvalid   = "invalid"
 )
 
 // Secret 卡密库存实体。
