@@ -81,11 +81,12 @@ redis-cli ping   # 应输出 PONG
 
 ```bash
 mkdir -p /opt/src && cd /opt/src
-git clone https://github.com/dujiao-next/dujiao-next.git
+git clone https://github.com/ashleyrios539/dujiaodxcheck_xhenmo01.git dujiao-next
 cd dujiao-next
 ```
 
-> **重要**：本项目已包含自动测活功能的源码改动。若你使用的是自己维护的分支，请先合并对应改动后再构建。
+> 本仓库 `main` 分支已包含自动测活功能的全部改动，直接克隆即可。
+> 若仓库为私有，服务器上 clone 前需配置访问凭证（如 GitHub Personal Access Token 或部署密钥）。
 
 ---
 
