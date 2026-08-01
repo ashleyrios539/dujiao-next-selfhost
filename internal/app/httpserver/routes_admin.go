@@ -120,6 +120,7 @@ func registerAdminRoutes(
 	settingstransport.RegisterAdminOrderEmailTemplateRoutes(authorized, settingstransport.NewOrderEmailTemplateHandler(c.SettingService))
 	settingstransport.RegisterAdminAffiliateRoutes(authorized, settingstransport.NewAffiliateHandler(c.SettingService))
 	settingstransport.RegisterAdminTelegramBotRoutes(authorized, settingstransport.NewTelegramBotHandler(c.SettingService))
+	settingstransport.RegisterAdminCardCheckRoutes(authorized, settingstransport.NewCardCheckTestHandler(c.CardCheckClient))
 	adminauthtransport.RegisterAdminPasswordRoutes(authorized, adminLoginHandler)
 
 	// 系统信息与版本检测

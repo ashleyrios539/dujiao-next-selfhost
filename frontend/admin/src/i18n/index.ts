@@ -2808,6 +2808,13 @@ const messages = {
             label: '轮询间隔（毫秒）',
             hint: '范围 500~10000，默认 2000。',
           },
+          test: {
+            button: '测试连接',
+            testing: '测试中...',
+            empty: '请先填写 CheckDx 卡密',
+            success: '连接成功，卡密有效，剩余点数 {balance}',
+            failed: '连接失败，请检查卡密是否正确或网络是否可达',
+          },
         },
         callbackRoutes: {
           title: '回调路由配置',
@@ -7208,6 +7215,13 @@ const messages = {
             label: '輪詢間隔（毫秒）',
             hint: '範圍 500~10000，預設 2000。',
           },
+          test: {
+            button: '測試連線',
+            testing: '測試中...',
+            empty: '請先填寫 CheckDx 卡密',
+            success: '連線成功，卡密有效，剩餘點數 {balance}',
+            failed: '連線失敗，請檢查卡密是否正確或網路是否可達',
+          },
         },
         callbackRoutes: {
           title: '回調路由配置',
@@ -11607,6 +11621,13 @@ const messages = {
             subtitle: 'How often to pull results from CheckDx after a check task starts.',
             label: 'Poll interval (milliseconds)',
             hint: 'Range 500-10000, default 2000.',
+          },
+          test: {
+            button: 'Test connection',
+            testing: 'Testing...',
+            empty: 'Please enter your CheckDx card key first',
+            success: 'Connected. Card key is valid, remaining points {balance}',
+            failed: 'Connection failed. Check the card key or network connectivity',
           },
         },
         callbackRoutes: {

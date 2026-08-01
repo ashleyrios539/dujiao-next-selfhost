@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -11,6 +12,8 @@ const { t } = useI18n()
 
 const loading = ref(false)
 const submitting = ref(false)
+const testing = ref(false)
+const testResult = ref<{ ok: boolean; balance?: number; message?: string } | null>(null)
 
 const form = reactive({
   enabled: false,
@@ -83,6 +86,27 @@ const save = async () => {
   }
 }
 
+const testConnection = async () => {
+  const kami = form.kami.trim()
+  if (!kami) {
+    testResult.value = { ok: false, message: t('admin.settings.cardCheck.test.empty') }
+    return
+  }
+  testing.value = true
+  testResult.value = null
+  try {
+    const res = await adminAPI.testCardCheck({ kami })
+    const balance = Number(res.data?.data?.balance ?? 0)
+    testResult.value = { ok: true, balance }
+  } catch (err) {
+    const known = err as Error & { __notified?: boolean }
+    const message = known?.__notified ? undefined : (known?.message || t('admin.settings.cardCheck.test.failed'))
+    testResult.value = { ok: false, message }
+  } finally {
+    testing.value = false
+  }
+}
+
 defineExpose({ save, submitting })
 
 onMounted(() => {
@@ -116,8 +140,23 @@ onMounted(() => {
       </div>
       <div class="space-y-1">
         <label class="text-xs font-medium text-muted-foreground">{{ t('admin.settings.cardCheck.kami.label') }}</label>
-        <Input v-model="form.kami" type="password" autocomplete="off" :placeholder="t('admin.settings.cardCheck.kami.placeholder')" />
+        <div class="flex items-center gap-2">
+          <Input v-model="form.kami" type="password" autocomplete="off" class="flex-1" :placeholder="t('admin.settings.cardCheck.kami.placeholder')" />
+          <Button type="button" variant="outline" size="sm" :disabled="testing || !form.kami.trim()" @click="testConnection">
+            <span v-if="testing" class="h-3 w-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary"></span>
+            {{ testing ? t('admin.settings.cardCheck.test.testing') : t('admin.settings.cardCheck.test.button') }}
+          </Button>
+        </div>
         <p class="text-xs text-muted-foreground">{{ t('admin.settings.cardCheck.kami.hint') }}</p>
+        <div v-if="testResult" class="mt-2 rounded-md border px-3 py-2 text-xs"
+          :class="testResult.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'">
+          <template v-if="testResult.ok">
+            {{ t('admin.settings.cardCheck.test.success', { balance: String(testResult.balance ?? 0) }) }}
+          </template>
+          <template v-else>
+            {{ testResult.message || t('admin.settings.cardCheck.test.failed') }}
+          </template>
+        </div>
       </div>
     </div>
 

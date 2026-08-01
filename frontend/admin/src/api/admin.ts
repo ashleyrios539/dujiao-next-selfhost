@@ -366,6 +366,7 @@ export const adminAPI = {
   deleteBanner: (id: number) => api.delete(`/admin/banners/${id}`),
   getSettings: (params?: Record<string, unknown>) => api.get('/admin/settings', { params }),
   updateSettings: (data: Record<string, unknown>) => api.put('/admin/settings', data),
+  testCardCheck: (data: { kami: string }) => api.post('/admin/settings/card-check/test', data),
   getHomeAnnouncement: () => api.get('/admin/settings', { params: { key: 'home_announcement' } }),
   updateHomeAnnouncement: (value: Record<string, unknown>) => api.put('/admin/settings', { key: 'home_announcement', value }),
   getSMTPSettings: () => api.get('/admin/settings/smtp'),

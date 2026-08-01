@@ -44,3 +44,7 @@ func RegisterAdminTelegramBotRoutes(admin gin.IRoutes, handler *TelegramBotHandl
 	admin.PUT("/settings/telegram-bot", handler.UpdateTelegramBotConfig)
 	admin.GET("/settings/telegram-bot/runtime-status", handler.GetTelegramBotRuntimeStatus)
 }
+
+func RegisterAdminCardCheckRoutes(admin gin.IRoutes, handler *CardCheckTestHandler) {
+	admin.POST("/settings/card-check/test", handler.TestCardCheck)
+}
