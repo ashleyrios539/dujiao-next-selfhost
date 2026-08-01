@@ -220,6 +220,21 @@ export function useCheckout() {
     return formatPrice(String(fixed), previewCurrency.value)
   }
 
+  const cartItemSubtotalCents = (item: CartItem) => {
+    const baseCents = amountToCents(item.priceAmount)
+    if (baseCents === null) return null
+    let unitCents = baseCents
+    if (item.cardCheckEnabled) {
+      const feeCents = amountToCents(item.cardCheckFee)
+      if (feeCents !== null) unitCents += feeCents
+    }
+    const pickCents = amountToCents(String(item.pickSurcharge ?? 0))
+    if (pickCents !== null) unitCents += pickCents
+    const qty = parseInteger(item.quantity)
+    if (qty === null) return null
+    return unitCents * qty
+  }
+
   const totalAmount = computed(() => {
     const totalCents = cartItems.value.reduce((sum, item) => {
       const amountCents = cartItemSubtotalCents(item)
@@ -946,21 +961,6 @@ export function useCheckout() {
     const rawImage = String(item.image || '').trim()
     if (!rawImage) return ''
     return getImageUrl(rawImage)
-  }
-
-  const cartItemSubtotalCents = (item: CartItem) => {
-    const baseCents = amountToCents(item.priceAmount)
-    if (baseCents === null) return null
-    let unitCents = baseCents
-    if (item.cardCheckEnabled) {
-      const feeCents = amountToCents(item.cardCheckFee)
-      if (feeCents !== null) unitCents += feeCents
-    }
-    const pickCents = amountToCents(String(item.pickSurcharge ?? 0))
-    if (pickCents !== null) unitCents += pickCents
-    const qty = parseInteger(item.quantity)
-    if (qty === null) return null
-    return unitCents * qty
   }
 
   const cartItemWholesaleSubtotalCents = (item: CartItem) => {
