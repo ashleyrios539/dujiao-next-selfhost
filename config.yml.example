@@ -172,6 +172,10 @@ reseller:
   # 管理员为分销商分配系统二级域名时使用的基础域名，例如 hello.{subdomain_base}。
   # 生产启用前请配置为已经做好 wildcard DNS/TLS 的域名，例如 shop.example.com。
   subdomain_base: ""
+  # 是否允许分销商开设子站（域名/独立站点）。设为 false 时：
+  # - 域名解析永远按主站处理，不再按 Host 命中 reseller_domains，不产生分销子站；
+  # - 分销商只能通过主站的「代理中心」按渠道价（channel_price）批发采购，无法配置子站外观。
+  sub_sites_enabled: true
   # 是否允许普通用户在个人中心自助提交分销商申请。
   self_apply_enabled: true
   # 分销利润入账后转为「可提现」的确认天数（0 表示即时到账，最大 3650）。

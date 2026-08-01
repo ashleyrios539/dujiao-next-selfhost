@@ -917,6 +917,7 @@ export interface AdminResellerProductSetting {
   markup_percent: string | number
   fixed_markup_amount: string | number
   fixed_price_amount: string | number
+  channel_price_amount: string | number
   sort_order: number
   created_at: string
   updated_at: string
@@ -933,6 +934,7 @@ export interface AdminResellerProductSettingRule {
   markup_percent: string | number
   fixed_markup_amount: string | number
   fixed_price_amount: string | number
+  channel_price_amount: string | number
   effective_price_amount?: string | number
   rule_source?: string
   sort_order: number
@@ -962,6 +964,7 @@ export interface AdminResellerProductSettingPayloadItem {
   markup_percent: string
   fixed_markup_amount: string
   fixed_price_amount: string
+  channel_price_amount: string
   sort_order: number
 }
 

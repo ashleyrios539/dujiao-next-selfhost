@@ -3,7 +3,6 @@ package integrationtest
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -22,7 +21,7 @@ import (
 
 func openResellerManagementServiceTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:reseller_management_%d?mode=memory&cache=shared", time.Now().UnixNano())), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(uniqueInMemoryDSN("reseller_management")), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open db failed: %v", err)
 	}
@@ -46,6 +45,7 @@ func newResellerManagementServiceForTest(db *gorm.DB) *ResellerManagementService
 		Enabled:          true,
 		SelfApplyEnabled: true,
 		SubdomainBase:    "shop.example.test",
+		SubSitesEnabled:  true,
 		MainHosts:        []string{"main.example.test"},
 	})
 }

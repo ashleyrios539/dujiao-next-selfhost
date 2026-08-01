@@ -296,7 +296,10 @@ type ResellerConfig struct {
 	MainHosts            []string `mapstructure:"main_hosts"`
 	TrustedForwardedHost bool     `mapstructure:"trusted_forwarded_host"`
 	SubdomainBase        string   `mapstructure:"subdomain_base"`
-	SelfApplyEnabled     bool     `mapstructure:"self_apply_enabled"`
+	// SubSitesEnabled 是否允许分销商开设子站（域名/独立站点）。
+	// 关闭时域名解析永远按主站处理，分销商仅能在主站代理中心按渠道价批发采购。
+	SubSitesEnabled bool `mapstructure:"sub_sites_enabled"`
+	SelfApplyEnabled   bool   `mapstructure:"self_apply_enabled"`
 	// SettlementConfirmDays 分销利润入账后转为可提现的确认天数（0 表示即时到账）。
 	SettlementConfirmDays int `mapstructure:"settlement_confirm_days"`
 }

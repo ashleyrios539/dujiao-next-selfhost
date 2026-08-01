@@ -7,6 +7,7 @@ import (
 
 	ginutil "github.com/dujiao-next/internal/platform/http/ginutil"
 
+	"github.com/dujiao-next/internal/config"
 	"github.com/dujiao-next/internal/constants"
 	reseller "github.com/dujiao-next/internal/modules/reseller/contract"
 	"github.com/dujiao-next/internal/platform/http/response"
@@ -88,6 +89,7 @@ type Handler struct {
 	google         GoogleAuthPublic
 	googleFallback GoogleAuthFallback
 	overlay        ResellerOverlay
+	resellerCfg    config.ResellerConfig
 }
 
 func NewHandler(
@@ -100,6 +102,7 @@ func NewHandler(
 	google GoogleAuthPublic,
 	googleFallback GoogleAuthFallback,
 	overlay ResellerOverlay,
+	resellerCfg config.ResellerConfig,
 ) *Handler {
 	if cache == nil {
 		panic("public config handler: cache is nil")
@@ -120,6 +123,7 @@ func NewHandler(
 		google:         google,
 		googleFallback: googleFallback,
 		overlay:        overlay,
+		resellerCfg:    resellerCfg,
 	}
 }
 
@@ -235,6 +239,15 @@ func (h *Handler) GetConfig(c *gin.Context) {
 		data = overlaid
 	} else if tenant.ResellerID == nil {
 		data["tenant"] = map[string]interface{}{"mode": "main", "host": tenant.Host}
+	}
+
+	// 主站下发分销模式开关，供两端前端决定「代理中心 / 子站」相关入口与页面显隐。
+	if tenant.ResellerID == nil {
+		if tenantVal, ok := data["tenant"].(map[string]interface{}); ok {
+			tenantVal["reseller_enabled"] = h.resellerCfg.Enabled
+			tenantVal["reseller_sub_sites_enabled"] = h.resellerCfg.SubSitesEnabled
+			tenantVal["reseller_self_apply_enabled"] = h.resellerCfg.SelfApplyEnabled
+		}
 	}
 
 	_ = h.cache.SetJSON(c.Request.Context(), cacheKey, data, publicConfigCacheTTL)

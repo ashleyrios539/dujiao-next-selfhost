@@ -50,6 +50,7 @@ import (
 	memberlevelapp "github.com/dujiao-next/internal/modules/memberlevel/application"
 	memberlevelcontract "github.com/dujiao-next/internal/modules/memberlevel/contract"
 	memberlevelgormstore "github.com/dujiao-next/internal/modules/memberlevel/infrastructure/gormstore"
+	resellercontract "github.com/dujiao-next/internal/modules/reseller/contract"
 	notificationapp "github.com/dujiao-next/internal/modules/notification/application"
 	notificationgormstore "github.com/dujiao-next/internal/modules/notification/infrastructure/gormstore"
 	notificationsmtp "github.com/dujiao-next/internal/modules/notification/infrastructure/smtp"
@@ -179,6 +180,8 @@ type Container struct {
 	ResellerAccountingLedger      *reseller.AccountingLedgerService
 	ResellerOrderService          *reseller.OrderQueryService
 	ResellerOperationsService     *reseller.OperationsService
+	ResellerWholesaleGateway      resellercontract.WholesaleOrderGateway
+	ResellerPurchaseService       *reseller.PurchaseService
 	ApiCredentialService          *apicredentialapp.Service
 	SiteConnectionService         *siteconnectionapp.Service
 	ProductMappingService         *mappingapp.Service

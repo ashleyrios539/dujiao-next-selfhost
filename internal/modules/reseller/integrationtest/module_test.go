@@ -1,12 +1,25 @@
 package integrationtest
 
 import (
+	"fmt"
+	"sync/atomic"
+
 	"github.com/dujiao-next/internal/config"
 	productcontract "github.com/dujiao-next/internal/modules/catalog/product/contract"
 	resellermodule "github.com/dujiao-next/internal/modules/reseller/application"
 	resellercontract "github.com/dujiao-next/internal/modules/reseller/contract"
 	resellergormstore "github.com/dujiao-next/internal/modules/reseller/infrastructure/gormstore"
 )
+
+// testDBSeq 提供进程中唯一的共享内存库名称后缀。
+// 共享内存库（mode=memory&cache=shared）按整条 DSN 命名复用，若并发用例拿到相同的
+// time.Now().UnixNano()（Windows 低精度时钟）会碰撞到同一条内存库，导致种子数据串库、偶发 UNIQUE 冲突。
+var testDBSeq int64
+
+// uniqueInMemoryDSN 为测试构造进程内唯一的共享内存 DSN。
+func uniqueInMemoryDSN(prefix string) string {
+	return fmt.Sprintf("file:%s_%d?mode=memory&cache=shared", prefix, atomic.AddInt64(&testDBSeq, 1))
+}
 
 // These aliases keep the integration scenarios concise while ensuring every
 // service under test is constructed from the bounded reseller module.

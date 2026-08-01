@@ -23,6 +23,8 @@ export const useAppStore = defineStore('app', () => {
         return String(config.value?.tenant?.mode || '').trim().toLowerCase() === 'reseller'
     })
     const canAccessResellerConsole = computed(() => !!config.value && !isResellerTenant.value)
+    // 子站开关：false 时分销商只走主站代理中心批发采购，不提供域名/独立站点能力。
+    const resellerSubSitesEnabled = computed(() => config.value?.tenant?.reseller_sub_sites_enabled !== false)
 
     // 设置语言：同时驱动 vue-i18n（内部按需加载语言包）
     const setLocale = (newLocale: string) => {
@@ -118,6 +120,7 @@ export const useAppStore = defineStore('app', () => {
         serverTimeOffset,
         isResellerTenant,
         canAccessResellerConsole,
+        resellerSubSitesEnabled,
         setLocale,
         loadConfig,
         applySEO,

@@ -20,11 +20,24 @@ type TenantContext struct {
 	PrimaryDomain     string
 	Unavailable       bool
 	UnavailableReason string
+	// WholesalePurchase 标记由主站「代理中心」发起的批发采购上下文。
+	// 子站关闭（sub_sites_enabled=false）模式下，分销商以主站身份按渠道价批量下单。
+	WholesalePurchase bool
 }
 
 // IsReseller 判断当前上下文是否为可用的分销站请求。
 func (tenant TenantContext) IsReseller() bool {
 	return tenant.ResellerID != nil && !tenant.IsMain && !tenant.Unavailable
+}
+
+// IsWholesalePurchase 判断当前上下文是否为主站代理中心批发采购。
+func (tenant TenantContext) IsWholesalePurchase() bool {
+	return tenant.ResellerID != nil && tenant.WholesalePurchase && !tenant.Unavailable
+}
+
+// HasResellerPricing 判断当前上下文是否需要走分销计价（子站零售或主站批发采购）。
+func (tenant TenantContext) HasResellerPricing() bool {
+	return tenant.IsReseller() || tenant.IsWholesalePurchase()
 }
 
 // MainTenantContext 构造主站租户上下文。
@@ -41,6 +54,18 @@ func ResellerTenantContext(host string, resellerID uint, resellerUserID uint, pr
 		ResellerID:     &id,
 		ResellerUserID: resellerUserID,
 		PrimaryDomain:  NormalizeHost(primaryDomain),
+	}
+}
+
+// ResellerPurchaseContext 构造主站代理中心批发采购租户上下文（不解析子域名）。
+func ResellerPurchaseContext(host string, resellerID uint, resellerUserID uint) TenantContext {
+	id := resellerID
+	return TenantContext{
+		Host:              NormalizeHost(host),
+		IsMain:            true,
+		ResellerID:        &id,
+		ResellerUserID:    resellerUserID,
+		WholesalePurchase: true,
 	}
 }
 

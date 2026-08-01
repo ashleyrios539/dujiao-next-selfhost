@@ -4,8 +4,10 @@ import (
 	"strings"
 	"time"
 
+	resellerapplication "github.com/dujiao-next/internal/modules/reseller/application"
 	resellermodule "github.com/dujiao-next/internal/modules/reseller/contract"
 	dto "github.com/dujiao-next/internal/modules/reseller/transport/http/presenter"
+	transportshared "github.com/dujiao-next/internal/modules/reseller/transport/http/shared"
 	"github.com/dujiao-next/internal/platform/http/ginutil"
 	"github.com/dujiao-next/internal/platform/http/response"
 
@@ -134,4 +136,88 @@ func parseOrderTimeQuery(raw string, endOfDay bool) (*time.Time, error) {
 		parsed = parsed.Add(24*time.Hour - time.Nanosecond)
 	}
 	return &parsed, nil
+}
+
+// PurchaseService 是主站代理中心渠道价批发采购端点所需的最小用例接口。
+type PurchaseService interface {
+	ListCatalog(userID uint, input resellerapplication.ProductSettingUserListInput) ([]resellerapplication.ProductSettingListRow, int64, error)
+	Preview(userID uint, host, clientIP string, items []resellermodule.WholesaleItemInput) (*resellermodule.WholesalePreview, error)
+	Create(userID uint, host, clientIP string, items []resellermodule.WholesaleItemInput) (*resellermodule.WholesaleCreated, error)
+}
+
+// UserPurchaseHandler 处理主站代理中心渠道价批发采购请求（不开子站模式）。
+type UserPurchaseHandler struct {
+	purchases PurchaseService
+}
+
+func NewUserPurchaseHandler(purchases PurchaseService) *UserPurchaseHandler {
+	if purchases == nil {
+		panic("reseller user purchase handler: purchases is nil")
+	}
+	return &UserPurchaseHandler{purchases: purchases}
+}
+
+type wholesalePurchaseRequest struct {
+	Items []resellermodule.WholesaleItemInput `json:"items" binding:"required"`
+}
+
+// ListCatalog 查询当前分销商可批发采购的商品列表（含渠道价）。
+func (h *UserPurchaseHandler) ListCatalog(c *gin.Context) {
+	uid, ok := ginutil.GetUserID(c)
+	if !ok {
+		return
+	}
+	page, pageSize := ginutil.ParsePagination(c)
+	categoryID, _ := ginutil.ParseQueryUint(c.Query("category_id"), false)
+	rows, total, err := h.purchases.ListCatalog(uid, resellerapplication.ProductSettingUserListInput{
+		Page:       page,
+		PageSize:   pageSize,
+		Keyword:    strings.TrimSpace(c.Query("keyword")),
+		CategoryID: categoryID,
+		Configured: strings.TrimSpace(c.Query("configured")),
+		Listed:     strings.TrimSpace(c.Query("listed")),
+	})
+	if err != nil {
+		respondUserProductSettingError(c, err, "error.user_fetch_failed")
+		return
+	}
+	response.SuccessWithPage(c, dto.NewResellerProductSettingListResp(transportshared.ListDTOInput(rows)), response.BuildPagination(page, pageSize, total))
+}
+
+// PreviewPurchase 按渠道价预览批发采购订单。
+func (h *UserPurchaseHandler) PreviewPurchase(c *gin.Context) {
+	uid, ok := ginutil.GetUserID(c)
+	if !ok {
+		return
+	}
+	var req wholesalePurchaseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ginutil.RespondBindError(c, err)
+		return
+	}
+	preview, err := h.purchases.Preview(uid, c.Request.Host, c.ClientIP(), req.Items)
+	if err != nil {
+		respondUserOrderError(c, err, "error.order_preview_failed")
+		return
+	}
+	response.Success(c, dto.NewWholesalePurchasePreviewResp(preview))
+}
+
+// CreatePurchase 按渠道价创建批发采购订单（买家为分销商本人）。
+func (h *UserPurchaseHandler) CreatePurchase(c *gin.Context) {
+	uid, ok := ginutil.GetUserID(c)
+	if !ok {
+		return
+	}
+	var req wholesalePurchaseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		ginutil.RespondBindError(c, err)
+		return
+	}
+	created, err := h.purchases.Create(uid, c.Request.Host, c.ClientIP(), req.Items)
+	if err != nil {
+		respondUserOrderError(c, err, "error.order_create_failed")
+		return
+	}
+	response.Success(c, dto.NewWholesalePurchaseCreatedResp(created))
 }

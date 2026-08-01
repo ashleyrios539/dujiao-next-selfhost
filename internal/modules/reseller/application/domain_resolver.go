@@ -49,7 +49,8 @@ func (r *DomainResolver) ResolveRequest(ctx context.Context, req *http.Request) 
 // ResolveHost 按原始 Host 解析租户上下文。
 func (r *DomainResolver) ResolveHost(ctx context.Context, rawHost string) (resellercontract.TenantContext, error) {
 	host := resellercontract.NormalizeHost(rawHost)
-	if r == nil || !r.cfg.Enabled {
+	// 分销模式关闭或子站关闭时，一律按主站处理：不解析 reseller_domains，也不对未知域名 404。
+	if r == nil || !r.cfg.Enabled || !r.cfg.SubSitesEnabled {
 		return resellercontract.MainTenantContext(host), nil
 	}
 	if host == "" {

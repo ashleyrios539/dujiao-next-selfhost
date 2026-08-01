@@ -3859,6 +3859,7 @@ const messages = {
           markupPercent: '百分比加价',
           fixedMarkup: '固定加价',
           fixedPrice: '固定售价',
+          channelPrice: '渠道价（批发进价）',
           unknown: '未知',
         },
         actions: {
@@ -8208,6 +8209,7 @@ const messages = {
           markupPercent: '百分比加價',
           fixedMarkup: '固定加價',
           fixedPrice: '固定售價',
+          channelPrice: '渠道價（批發進價）',
           unknown: '未知',
         },
         actions: {
@@ -12557,6 +12559,7 @@ const messages = {
           markupPercent: 'Percent markup',
           fixedMarkup: 'Fixed markup',
           fixedPrice: 'Fixed price',
+          channelPrice: 'Channel price (wholesale cost)',
           unknown: 'Unknown',
         },
         actions: {

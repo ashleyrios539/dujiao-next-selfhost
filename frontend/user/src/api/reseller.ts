@@ -7,6 +7,7 @@ import type {
     ResellerProductSettingUpdatePayload,
     ResellerSiteConfigPayload,
     ResellerWithdrawApplyPayload,
+    WholesalePurchasePayload,
 } from './types'
 
 export const resellerAPI = {
@@ -38,4 +39,7 @@ export const resellerAPI = {
     withdraws: (params?: any) => userApi.get('/reseller/withdraws', { params }),
     applyWithdraw: (data: ResellerWithdrawApplyPayload) =>
         userApi.post('/reseller/withdraws', data),
+    catalog: (params?: any) => userApi.get('/reseller/catalog', { params }),
+    purchasePreview: (data: WholesalePurchasePayload) => userApi.post('/reseller/purchases/preview', data),
+    purchaseCreate: (data: WholesalePurchasePayload) => userApi.post('/reseller/purchases', data),
 }

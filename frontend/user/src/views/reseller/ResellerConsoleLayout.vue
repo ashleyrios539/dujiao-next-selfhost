@@ -65,11 +65,13 @@ import {
   LayoutGrid,
   Settings,
   ShoppingBag,
+  Store,
   Tag,
   Upload,
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { useAppStore } from '../../stores/app'
 import ResellerConsoleTopbar from '../../components/reseller-console/ResellerConsoleTopbar.vue'
 import ResellerPageState from '../../components/reseller-console/ResellerPageState.vue'
 import { useResellerProfile } from '../../composables/reseller/useResellerProfile'
@@ -77,6 +79,7 @@ import { canRenderResellerConsoleModule } from '../../utils/resellerConsole'
 
 const { t } = useI18n()
 const route = useRoute()
+const appStore = useAppStore()
 const { loading: profileLoading, state: profileState, load: loadProfile } = useResellerProfile()
 const profileReady = ref(false)
 
@@ -88,6 +91,7 @@ const groupDefs: Array<{ key: string; titleKey: string; items: NavDef[] }> = [
     titleKey: 'resellerConsole.navGroups.operations',
     items: [
       { to: '/reseller', label: 'resellerConsole.nav.dashboard', icon: LayoutGrid },
+      { to: '/reseller/wholesale', label: 'resellerConsole.nav.wholesale', icon: Store },
       { to: '/reseller/orders', label: 'resellerConsole.nav.orders', icon: ShoppingBag },
       { to: '/reseller/finance', label: 'resellerConsole.nav.finance', icon: Banknote },
       { to: '/reseller/ledger', label: 'resellerConsole.nav.ledger', icon: FileText },
@@ -98,9 +102,9 @@ const groupDefs: Array<{ key: string; titleKey: string; items: NavDef[] }> = [
     key: 'config',
     titleKey: 'resellerConsole.navGroups.config',
     items: [
+      { to: '/reseller/products', label: 'resellerConsole.nav.products', icon: Tag },
       { to: '/reseller/domains', label: 'resellerConsole.nav.domains', icon: Globe },
       { to: '/reseller/site', label: 'resellerConsole.nav.site', icon: Settings },
-      { to: '/reseller/products', label: 'resellerConsole.nav.products', icon: Tag },
     ],
   },
   {
@@ -110,13 +114,19 @@ const groupDefs: Array<{ key: string; titleKey: string; items: NavDef[] }> = [
   },
 ]
 
-const navGroups = computed(() =>
-  groupDefs.map((group) => ({
-    key: group.key,
-    title: t(group.titleKey),
-    items: group.items.map((item) => ({ ...item, label: t(item.label) })),
-  })),
-)
+const navGroups = computed(() => {
+  const subSitesEnabled = appStore.resellerSubSitesEnabled
+  const hiddenPaths = new Set<string>(subSitesEnabled ? [] : ['/reseller/domains', '/reseller/site', '/reseller/products'])
+  return groupDefs
+    .map((group) => ({
+      key: group.key,
+      title: t(group.titleKey),
+      items: group.items
+        .filter((item) => !hiddenPaths.has(item.to))
+        .map((item) => ({ ...item, label: t(item.label) })),
+    }))
+    .filter((group) => group.items.length > 0)
+})
 
 const isActive = (path: string) => {
   if (path === '/reseller') return route.path === path

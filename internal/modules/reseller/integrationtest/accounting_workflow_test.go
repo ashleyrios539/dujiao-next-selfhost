@@ -51,7 +51,7 @@ func newResellerAccountingTestHarness(store *resellergormstore.Store, confirmDay
 
 func openResellerAccountingServiceTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	dsn := fmt.Sprintf("file:reseller_accounting_service_%d?mode=memory&cache=shared", time.Now().UnixNano())
+	dsn := uniqueInMemoryDSN("reseller_accounting_service")
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite failed: %v", err)

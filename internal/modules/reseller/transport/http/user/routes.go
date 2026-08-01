@@ -50,3 +50,13 @@ func RegisterUserOrderRoutes(console gin.IRoutes, handler *UserOrderHandler) {
 	console.GET("/orders/stats", handler.GetOrderStats)
 	console.GET("/orders/:order_no", handler.GetOrderDetail)
 }
+
+// RegisterUserPurchaseRoutes 注册主站代理中心渠道价批发采购路由。
+func RegisterUserPurchaseRoutes(console gin.IRoutes, handler *UserPurchaseHandler) {
+	if console == nil || handler == nil {
+		panic("reseller user purchase routes: required dependency is nil")
+	}
+	console.GET("/catalog", handler.ListCatalog)
+	console.POST("/purchases/preview", handler.PreviewPurchase)
+	console.POST("/purchases", handler.CreatePurchase)
+}

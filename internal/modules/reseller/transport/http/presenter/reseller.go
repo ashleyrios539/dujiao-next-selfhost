@@ -3,6 +3,7 @@ package presenter
 import (
 	"time"
 
+	resellercontract "github.com/dujiao-next/internal/modules/reseller/contract"
 	resellerdomain "github.com/dujiao-next/internal/modules/reseller/domain"
 
 	productdomain "github.com/dujiao-next/internal/modules/catalog/product/domain"
@@ -150,6 +151,7 @@ type ResellerProductSettingResp struct {
 	MarkupPercent        string     `json:"markup_percent"`
 	FixedMarkupAmount    string     `json:"fixed_markup_amount"`
 	FixedPriceAmount     string     `json:"fixed_price_amount"`
+	ChannelPriceAmount   string     `json:"channel_price_amount"`
 	EffectivePriceAmount string     `json:"effective_price_amount,omitempty"`
 	RuleSource           string     `json:"rule_source,omitempty"`
 	SortOrder            int        `json:"sort_order"`
@@ -157,11 +159,13 @@ type ResellerProductSettingResp struct {
 }
 
 type ResellerProductSettingProductResp struct {
-	ID          uint         `json:"id"`
-	Slug        string       `json:"slug"`
-	Title       jsonmap.JSON `json:"title"`
-	PriceAmount string       `json:"price_amount"`
-	IsActive    bool         `json:"is_active"`
+	ID               uint         `json:"id"`
+	Slug             string       `json:"slug"`
+	Title            jsonmap.JSON `json:"title"`
+	PriceAmount      string       `json:"price_amount"`
+	IsActive         bool         `json:"is_active"`
+	CardCheckEnabled bool         `json:"card_check_enabled"`
+	CardCheckFee     string       `json:"card_check_fee"`
 }
 
 type ResellerProductSettingSKUResp struct {
@@ -210,20 +214,21 @@ type AdminResellerProductSettingProductResp struct {
 }
 
 type AdminResellerProductSettingResp struct {
-	ID                uint                                    `json:"id"`
-	ResellerID        uint                                    `json:"reseller_id"`
-	ProductID         uint                                    `json:"product_id"`
-	SKUID             uint                                    `json:"sku_id"`
-	IsListed          bool                                    `json:"is_listed"`
-	PricingMode       string                                  `json:"pricing_mode"`
-	MarkupPercent     string                                  `json:"markup_percent"`
-	FixedMarkupAmount string                                  `json:"fixed_markup_amount"`
-	FixedPriceAmount  string                                  `json:"fixed_price_amount"`
-	SortOrder         int                                     `json:"sort_order"`
-	CreatedAt         time.Time                               `json:"created_at"`
-	UpdatedAt         time.Time                               `json:"updated_at"`
-	Profile           *AdminResellerProductSettingProfileResp `json:"profile,omitempty"`
-	Product           *AdminResellerProductSettingProductResp `json:"product,omitempty"`
+	ID                 uint                                    `json:"id"`
+	ResellerID         uint                                    `json:"reseller_id"`
+	ProductID          uint                                    `json:"product_id"`
+	SKUID              uint                                    `json:"sku_id"`
+	IsListed           bool                                    `json:"is_listed"`
+	PricingMode        string                                  `json:"pricing_mode"`
+	MarkupPercent      string                                  `json:"markup_percent"`
+	FixedMarkupAmount  string                                  `json:"fixed_markup_amount"`
+	FixedPriceAmount   string                                  `json:"fixed_price_amount"`
+	ChannelPriceAmount string                                  `json:"channel_price_amount"`
+	SortOrder          int                                     `json:"sort_order"`
+	CreatedAt          time.Time                               `json:"created_at"`
+	UpdatedAt          time.Time                               `json:"updated_at"`
+	Profile            *AdminResellerProductSettingProfileResp `json:"profile,omitempty"`
+	Product            *AdminResellerProductSettingProductResp `json:"product,omitempty"`
 }
 
 func NewResellerProfileSummaryResp(profile *resellerdomain.Profile) *ResellerProfileSummaryResp {
@@ -386,11 +391,13 @@ func NewResellerProductSettingDetailResp(input ResellerProductSettingDTOInput) R
 	productSetting := findResellerProductSetting(input.Settings, 0)
 	resp := ResellerProductSettingDetailResp{
 		Product: ResellerProductSettingProductResp{
-			ID:          input.Product.ID,
-			Slug:        input.Product.Slug,
-			Title:       input.Product.TitleJSON,
-			PriceAmount: input.Product.PriceAmount.String(),
-			IsActive:    input.Product.IsActive,
+			ID:               input.Product.ID,
+			Slug:             input.Product.Slug,
+			Title:            input.Product.TitleJSON,
+			PriceAmount:      input.Product.PriceAmount.String(),
+			IsActive:         input.Product.IsActive,
+			CardCheckEnabled: input.Product.CardCheckEnabled,
+			CardCheckFee:     input.Product.CardCheckFee.String(),
 		},
 		SKUs: make([]ResellerProductSettingSKUResp, 0, len(input.Product.SKUs)),
 	}
@@ -475,6 +482,7 @@ func newResellerProductSettingResp(setting resellerdomain.ProductSetting, effect
 		MarkupPercent:        setting.MarkupPercent.String(),
 		FixedMarkupAmount:    setting.FixedMarkupAmount.String(),
 		FixedPriceAmount:     setting.FixedPriceAmount.String(),
+		ChannelPriceAmount:   setting.ChannelPriceAmount.String(),
 		EffectivePriceAmount: effectivePrice,
 		RuleSource:           ruleSource,
 		SortOrder:            setting.SortOrder,
@@ -493,18 +501,19 @@ func findResellerProductSetting(settings []resellerdomain.ProductSetting, skuID 
 
 func NewAdminResellerProductSettingResp(row resellerdomain.ProductSetting) AdminResellerProductSettingResp {
 	resp := AdminResellerProductSettingResp{
-		ID:                row.ID,
-		ResellerID:        row.ResellerID,
-		ProductID:         row.ProductID,
-		SKUID:             row.SKUID,
-		IsListed:          row.IsListed,
-		PricingMode:       row.PricingMode,
-		MarkupPercent:     row.MarkupPercent.String(),
-		FixedMarkupAmount: row.FixedMarkupAmount.String(),
-		FixedPriceAmount:  row.FixedPriceAmount.String(),
-		SortOrder:         row.SortOrder,
-		CreatedAt:         row.CreatedAt,
-		UpdatedAt:         row.UpdatedAt,
+		ID:                 row.ID,
+		ResellerID:         row.ResellerID,
+		ProductID:          row.ProductID,
+		SKUID:              row.SKUID,
+		IsListed:           row.IsListed,
+		PricingMode:        row.PricingMode,
+		MarkupPercent:      row.MarkupPercent.String(),
+		FixedMarkupAmount:  row.FixedMarkupAmount.String(),
+		FixedPriceAmount:   row.FixedPriceAmount.String(),
+		ChannelPriceAmount: row.ChannelPriceAmount.String(),
+		SortOrder:          row.SortOrder,
+		CreatedAt:          row.CreatedAt,
+		UpdatedAt:          row.UpdatedAt,
 	}
 	if row.Profile != nil {
 		profile := &AdminResellerProductSettingProfileResp{
@@ -625,5 +634,60 @@ func NewResellerDashboardResp(opened bool, profile *resellerdomain.Profile, bala
 		Balances:               NewResellerBalanceRespList(balances),
 		WithdrawEnabled:        withdrawEnabled,
 		WithdrawDisabledReason: withdrawDisabledReason,
+	}
+}
+
+// WholesalePurchasePreviewItemResp 批发采购预订单行。
+type WholesalePurchasePreviewItemResp struct {
+	ProductID        uint   `json:"product_id"`
+	SKUID            uint   `json:"sku_id"`
+	Quantity         int    `json:"quantity"`
+	UnitPrice        string `json:"unit_price"`
+	TotalPrice       string `json:"total_price"`
+	CardCheckEnabled bool   `json:"card_check_enabled"`
+}
+
+// WholesalePurchasePreviewResp 批发采购预览结果。
+type WholesalePurchasePreviewResp struct {
+	Currency       string                             `json:"currency"`
+	TotalAmount    string                             `json:"total_amount"`
+	OriginalAmount string                             `json:"original_amount"`
+	Items          []WholesalePurchasePreviewItemResp `json:"items"`
+}
+
+// WholesalePurchaseCreatedResp 批发采购下单结果。
+type WholesalePurchaseCreatedResp struct {
+	OrderID     uint   `json:"order_id"`
+	OrderNo     string `json:"order_no"`
+	Currency    string `json:"currency"`
+	TotalAmount string `json:"total_amount"`
+}
+
+func NewWholesalePurchasePreviewResp(preview *resellercontract.WholesalePreview) WholesalePurchasePreviewResp {
+	resp := WholesalePurchasePreviewResp{
+		Currency:       preview.Currency,
+		TotalAmount:    preview.TotalAmount.Round(2).StringFixed(2),
+		OriginalAmount: preview.OriginalAmount.Round(2).StringFixed(2),
+		Items:          make([]WholesalePurchasePreviewItemResp, 0, len(preview.Items)),
+	}
+	for _, item := range preview.Items {
+		resp.Items = append(resp.Items, WholesalePurchasePreviewItemResp{
+			ProductID:        item.ProductID,
+			SKUID:            item.SKUID,
+			Quantity:         item.Quantity,
+			UnitPrice:        item.UnitPrice.Round(2).StringFixed(2),
+			TotalPrice:       item.TotalPrice.Round(2).StringFixed(2),
+			CardCheckEnabled: item.CardCheckEnabled,
+		})
+	}
+	return resp
+}
+
+func NewWholesalePurchaseCreatedResp(created *resellercontract.WholesaleCreated) WholesalePurchaseCreatedResp {
+	return WholesalePurchaseCreatedResp{
+		OrderID:     created.OrderID,
+		OrderNo:     created.OrderNo,
+		Currency:    created.Currency,
+		TotalAmount: created.TotalAmount.Round(2).StringFixed(2),
 	}
 }

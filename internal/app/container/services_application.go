@@ -140,4 +140,5 @@ func (c *Container) initApplicationServices() {
 		gormstore.NewBannerStore(gormdb.DB),
 		contentapp.SystemClock{},
 	)
+	c.initResellerWholesale()
 }

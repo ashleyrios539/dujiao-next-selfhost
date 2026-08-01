@@ -160,6 +160,9 @@ func (s *ManagementService) AssignSystemSubdomain(ctx context.Context, adminID, 
 	if s == nil || s.store == nil || adminID == 0 || profileID == 0 {
 		return nil, productcontract.ErrNotFound
 	}
+	if !s.cfg.SubSitesEnabled {
+		return nil, resellercontract.ErrSubdomainBaseMissing
+	}
 	base := resellercontract.NormalizeHost(s.cfg.SubdomainBase)
 	if base == "" {
 		return nil, resellercontract.ErrSubdomainBaseMissing
@@ -319,6 +322,9 @@ func (s *ManagementService) UpdateProfileOperationalConfig(adminID, profileID ui
 func (s *ManagementService) SubmitUserCustomDomain(userID uint, rawDomain string) (*resellerdomain.Domain, error) {
 	if s == nil || s.store == nil || userID == 0 {
 		return nil, productcontract.ErrNotFound
+	}
+	if !s.cfg.SubSitesEnabled {
+		return nil, resellercontract.ErrSubdomainBaseMissing
 	}
 	profile, err := s.store.GetProfileByUserID(userID)
 	if err != nil {

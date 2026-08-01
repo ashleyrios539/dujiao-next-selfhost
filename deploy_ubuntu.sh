@@ -36,6 +36,8 @@
 #    ADMIN_PATH    后台路径；留空则随机生成
 #    DJ_ADMIN_USER 初始管理员用户名（默认 admin）
 #    DJ_ADMIN_PASS 初始管理员密码；留空则随机生成并打印
+#    RESELLER_ENABLED          分销/代理商功能开关（默认 true）
+#    RESELLER_SUB_SITES_ENABLED 是否允许分销商开设子站（默认 false=仅主站渠道价批发采购）
 #
 #  参数：
 #    -y, --yes     非交互模式：跳过交互提示，全部使用默认/环境变量值
@@ -54,6 +56,8 @@ DOMAIN="${DOMAIN:-}"
 ADMIN_PATH="${ADMIN_PATH:-}"
 DJ_ADMIN_USER="${DJ_ADMIN_USER:-}"
 DJ_ADMIN_PASS="${DJ_ADMIN_PASS:-}"
+RESELLER_ENABLED="${RESELLER_ENABLED:-true}"
+RESELLER_SUB_SITES_ENABLED="${RESELLER_SUB_SITES_ENABLED:-false}"
 
 # ------------------------------ 日志工具 ----------------------------------
 RESET="\033[0m"; BOLD="\033[1m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; CYAN="\033[36m"
@@ -333,6 +337,18 @@ queue:
   enabled: true
   host: 127.0.0.1
   port: 6379
+
+reseller:
+  enabled: $RESELLER_ENABLED
+  main_hosts:
+    - localhost
+    - 127.0.0.1
+    - "::1"
+  trusted_forwarded_host: false
+  subdomain_base: ""
+  sub_sites_enabled: $RESELLER_SUB_SITES_ENABLED
+  self_apply_enabled: true
+  settlement_confirm_days: 7
 EOF
     chmod 600 "$INSTALL_DIR/config.yml"
   fi

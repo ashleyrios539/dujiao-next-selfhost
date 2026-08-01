@@ -2,6 +2,7 @@ const RESELLER_PRICING_MODE_INHERIT = 'inherit'
 const RESELLER_PRICING_MODE_MARKUP_PERCENT = 'markup_percent'
 const RESELLER_PRICING_MODE_FIXED_MARKUP = 'fixed_markup'
 const RESELLER_PRICING_MODE_FIXED_PRICE = 'fixed_price'
+const RESELLER_PRICING_MODE_CHANNEL_PRICE = 'channel_price'
 
 type ResellerProductSettingDataLike = {
   is_listed?: boolean
@@ -29,6 +30,7 @@ type ResellerProductSettingPayloadItem = {
   markup_percent: string
   fixed_markup_amount: string
   fixed_price_amount: string
+  channel_price_amount: string
   sort_order: number
 }
 
@@ -50,6 +52,7 @@ export type ResellerProductSettingFormItem = {
   markup_percent?: string
   fixed_markup_amount?: string
   fixed_price_amount?: string
+  channel_price_amount?: string
   sort_order?: number
 }
 
@@ -119,6 +122,7 @@ export const getResellerPricingModeLabelKey = (mode?: string) => {
   if (mode === RESELLER_PRICING_MODE_MARKUP_PERCENT) return 'markupPercent'
   if (mode === RESELLER_PRICING_MODE_FIXED_MARKUP) return 'fixedMarkup'
   if (mode === RESELLER_PRICING_MODE_FIXED_PRICE) return 'fixedPrice'
+  if (mode === RESELLER_PRICING_MODE_CHANNEL_PRICE) return 'channelPrice'
   return 'unknown'
 }
 
@@ -129,6 +133,7 @@ export const normalizeResellerProductSettingForm = (raw: ResellerProductSettingF
   markup_percent: moneyOrZero(raw.markup_percent),
   fixed_markup_amount: moneyOrZero(raw.fixed_markup_amount),
   fixed_price_amount: moneyOrZero(raw.fixed_price_amount),
+  channel_price_amount: moneyOrZero(raw.channel_price_amount),
   sort_order: Number(raw.sort_order || 0),
 })
 
@@ -138,6 +143,7 @@ export const buildResellerProductSettingPayload = (items: ResellerProductSetting
     const useMarkupPercent = normalized.pricing_mode === RESELLER_PRICING_MODE_MARKUP_PERCENT
     const useFixedMarkup = normalized.pricing_mode === RESELLER_PRICING_MODE_FIXED_MARKUP
     const useFixedPrice = normalized.pricing_mode === RESELLER_PRICING_MODE_FIXED_PRICE
+    const useChannelPrice = normalized.pricing_mode === RESELLER_PRICING_MODE_CHANNEL_PRICE
     return {
       sku_id: normalized.sku_id,
       is_listed: normalized.is_listed,
@@ -145,6 +151,7 @@ export const buildResellerProductSettingPayload = (items: ResellerProductSetting
       markup_percent: useMarkupPercent ? moneyOrZero(normalized.markup_percent) : '0.00',
       fixed_markup_amount: useFixedMarkup ? moneyOrZero(normalized.fixed_markup_amount) : '0.00',
       fixed_price_amount: useFixedPrice ? moneyOrZero(normalized.fixed_price_amount) : '0.00',
+      channel_price_amount: useChannelPrice ? moneyOrZero(normalized.channel_price_amount) : '0.00',
       sort_order: normalized.sort_order,
     }
   }),

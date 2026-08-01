@@ -38,6 +38,7 @@ func registerStorefrontRoutes(
 	userResellerProductSettingHandler *resellertransport.UserProductSettingHandler,
 	userResellerFinanceHandler *resellertransport.UserFinanceHandler,
 	userResellerOrderHandler *resellertransport.UserOrderHandler,
+	userResellerPurchaseHandler *resellertransport.UserPurchaseHandler,
 	userApiCredentialHandler *apicredentialtransport.UserHandler,
 	userAuditLogHandler *auditlogtransport.UserHandler,
 	userGiftCardHandler *giftcardtransport.UserHandler,
@@ -147,6 +148,7 @@ func registerStorefrontRoutes(
 			resellertransport.RegisterUserProductSettingRoutes(resellerConsole, userResellerProductSettingHandler)
 			resellertransport.RegisterUserFinanceRoutes(resellerConsole, userResellerFinanceHandler)
 			resellertransport.RegisterUserOrderRoutes(resellerConsole, userResellerOrderHandler)
+			resellertransport.RegisterUserPurchaseRoutes(resellerConsole, userResellerPurchaseHandler)
 		}
 
 		// API 对接权限（用户中心）

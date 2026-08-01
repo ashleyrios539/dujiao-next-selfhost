@@ -198,6 +198,28 @@ web:
 
 邮件用于订单状态通知、注册验证，支付用于收款。按需填写 `email:` 段与各支付渠道配置。未配置前功能可正常使用，但无法发送通知与收款。
 
+### 4. 分销/代理商（渠道价批发，不开子站）
+
+一键脚本 `deploy_ubuntu.sh` 生成 config.yml 时已默认写入如下 `reseller:` 段（可通过环境变量 `RESELLER_ENABLED`、`RESELLER_SUB_SITES_ENABLED` 覆盖）：
+
+```yaml
+reseller:
+  enabled: true                  # 开启分销/代理商功能
+  main_hosts:
+    - localhost
+    - 127.0.0.1
+    - "::1"
+  trusted_forwarded_host: false
+  subdomain_base: ""             # 不开子站，无需泛解析
+  sub_sites_enabled: false       # 关闭子站：仅主站「代理中心」按渠道价批发采购
+  self_apply_enabled: true       # 允许用户在个人中心自助申请开通代理
+  settlement_confirm_days: 7
+```
+
+> **已有服务器**：`deploy_ubuntu.sh` 检测到已存在 `config.yml` 会跳过生成。请手动在现有 `config.yml` 末尾补上上面的 `reseller:` 段，再 `sudo bash deploy_ubuntu.sh` 更新程序即可。
+
+> **使用流程**：代理审核通过后，登录主站 → 个人中心 → 分销中心 → **批发采购**，按渠道价批量下单付款，平台发货到代理名下。渠道价（批发进价，可低于零售价、不得低于成本价）在管理端「分销 → 商品配置」按商品/SKU 设置。
+
 ---
 
 ## 五、创建运行用户与目录

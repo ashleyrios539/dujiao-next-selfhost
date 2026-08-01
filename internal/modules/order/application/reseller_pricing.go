@@ -63,6 +63,12 @@ func (r *ResellerPricingResolver) ApplyToOrderBuildResult(tenant resellercontrac
 		ProfitEligible: true,
 		Items:          make([]resellercontract.OrderPricingItem, 0, len(result.Plans)),
 	}
+	// 主站代理中心批发采购：买家即分销商本人，按渠道价购买，利润口径为成交额本身，
+	// 不再给分销商计佣金（ProfitEligible=false 使下游账务不会入账）。
+	wholesale := tenant.IsWholesalePurchase()
+	if wholesale {
+		ctx.ProfitEligible = false
+	}
 
 	for i := range result.Plans {
 		plan := &result.Plans[i]
@@ -83,13 +89,18 @@ func (r *ResellerPricingResolver) ApplyToOrderBuildResult(tenant resellercontrac
 		if err != nil {
 			return nil, err
 		}
-		if err := validateResellerUnitAmount(profile, plan.SKU, baseUnit, resellerUnit); err != nil {
+		if err := validateResellerUnitAmount(profile, plan.SKU, baseUnit, resellerUnit, rule); err != nil {
 			return nil, err
 		}
 		quantity := decimal.NewFromInt(int64(plan.Item.Quantity))
 		baseTotal := baseUnit.Mul(quantity).Round(2)
 		resellerTotal := resellerUnit.Mul(quantity).Round(2)
 		profit := resellerTotal.Sub(baseTotal).Round(2)
+		if wholesale {
+			// 批发采购：基准价即成交价，单行利润为 0（进货成本 = 渠道价）。
+			baseTotal = resellerTotal
+			profit = decimal.Zero
+		}
 
 		zeroMoney := money.FromDecimal(decimal.Zero)
 		plan.TotalAmount = resellerTotal
@@ -207,9 +218,9 @@ func (r *ResellerPricingResolver) ResolveDisplayPrices(tenant resellercontract.T
 			result.HiddenSKUIDs[sku.ID] = true
 			continue
 		}
-		price, _, err := resolveResellerUnitAmount(batch.Profile, productSetting, skuSetting, sku.PriceAmount.Decimal.Round(2))
+		price, rule, err := resolveResellerUnitAmount(batch.Profile, productSetting, skuSetting, sku.PriceAmount.Decimal.Round(2))
 		if err == nil {
-			err = validateResellerUnitAmount(batch.Profile, &sku, sku.PriceAmount.Decimal.Round(2), price)
+			err = validateResellerUnitAmount(batch.Profile, &sku, sku.PriceAmount.Decimal.Round(2), price, rule)
 		}
 		if err != nil {
 			// 定价配置可能在保存后因基准价/成本价/上限调整而失效；
@@ -282,8 +293,8 @@ func resolveResellerUnitAmount(profile *resellerdomain.Profile, productSetting *
 	return resellerapplication.ResolveUnitAmount(profile, productSetting, skuSetting, baseUnit)
 }
 
-func validateResellerUnitAmount(profile *resellerdomain.Profile, sku *productdomain.ProductSKU, baseUnit decimal.Decimal, resellerUnit decimal.Decimal) error {
-	return resellerapplication.ValidateUnitAmount(profile, sku, baseUnit, resellerUnit)
+func validateResellerUnitAmount(profile *resellerdomain.Profile, sku *productdomain.ProductSKU, baseUnit decimal.Decimal, resellerUnit decimal.Decimal, rule resellerapplication.PricingRule) error {
+	return resellerapplication.ValidateResolvedUnitAmount(profile, sku, baseUnit, resellerUnit, rule)
 }
 
 func collectOrderPlanIDs(plans []childOrderPlan) ([]uint, []uint) {
@@ -341,7 +352,7 @@ func uniqueServiceUintSlice(values []uint) []uint {
 }
 
 func isResellerOrderContext(tenant resellercontract.TenantContext) bool {
-	return tenant.IsReseller()
+	return tenant.HasResellerPricing()
 }
 
 func resellerSnapshotDomain(tenant resellercontract.TenantContext) string {

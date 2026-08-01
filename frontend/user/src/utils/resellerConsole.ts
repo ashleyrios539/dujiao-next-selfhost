@@ -10,6 +10,7 @@ export type ResellerModuleKey =
   | 'finance'
   | 'ledger'
   | 'withdraws'
+  | 'wholesale'
 
 export type ResellerConsoleModuleState = {
   visible: boolean
@@ -33,6 +34,7 @@ const activeModules: ResellerModuleKey[] = [
   'finance',
   'ledger',
   'withdraws',
+  'wholesale',
 ]
 
 const pathModuleMap: Record<string, ResellerModuleKey> = {
@@ -44,6 +46,7 @@ const pathModuleMap: Record<string, ResellerModuleKey> = {
   finance: 'finance',
   ledger: 'ledger',
   withdraws: 'withdraws',
+  wholesale: 'wholesale',
 }
 
 export const getResellerConsoleState = (snapshot?: ResellerManagementSnapshotData | null): ResellerConsoleState => {

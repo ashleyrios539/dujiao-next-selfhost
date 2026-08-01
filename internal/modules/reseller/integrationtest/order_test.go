@@ -24,7 +24,7 @@ import (
 
 func openResellerOrderServiceTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:reseller_order_service_%d?mode=memory&cache=shared", time.Now().UnixNano())), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(uniqueInMemoryDSN("reseller_order_service")), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite failed: %v", err)
 	}

@@ -108,6 +108,7 @@ const authStore = useAdminAuthStore()
 const isDark = ref(false)
 const appVersion = ref('')
 const siteUrl = ref('')
+const subSitesEnabled = ref(true)
 
 // 版本检测与一键升级的完整交互都在 SystemUpdateDialog 内，这里只负责开关
 const updateCheckOpen = ref(false)
@@ -372,18 +373,22 @@ const navGroups = computed<NavGroup[]>(() => {
           icon: Users,
           permission: 'GET:/admin/resellers/profiles',
         },
-        {
-          label: t('admin.navItems.resellerDomains'),
-          to: '/resellers/domains',
-          icon: Link,
-          permission: 'GET:/admin/resellers/domains',
-        },
-        {
-          label: t('admin.navItems.resellerSiteConfigs'),
-          to: '/resellers/site-configs',
-          icon: Settings,
-          permission: 'GET:/admin/resellers/site-configs',
-        },
+        ...(subSitesEnabled.value
+          ? [
+              {
+                label: t('admin.navItems.resellerDomains'),
+                to: '/resellers/domains',
+                icon: Link,
+                permission: 'GET:/admin/resellers/domains',
+              },
+              {
+                label: t('admin.navItems.resellerSiteConfigs'),
+                to: '/resellers/site-configs',
+                icon: Settings,
+                permission: 'GET:/admin/resellers/site-configs',
+              },
+            ]
+          : []),
         {
           label: t('admin.navItems.resellerProductSettings'),
           to: '/resellers/product-settings',
@@ -732,6 +737,7 @@ onMounted(() => {
     if (typeof url === 'string' && url) {
       siteUrl.value = url
     }
+    subSitesEnabled.value = payload?.tenant?.reseller_sub_sites_enabled !== false
   }).catch(() => {})
 })
 

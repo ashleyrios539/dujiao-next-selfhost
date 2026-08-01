@@ -21,12 +21,13 @@ const (
 
 // PricingRule 描述分销改价规则解析结果。
 type PricingRule struct {
-	Mode              string
-	Source            string
-	SettingID         *uint
-	MarkupPercent     decimal.Decimal
-	FixedMarkupAmount decimal.Decimal
-	FixedPriceAmount  decimal.Decimal
+	Mode               string
+	Source             string
+	SettingID          *uint
+	MarkupPercent      decimal.Decimal
+	FixedMarkupAmount  decimal.Decimal
+	FixedPriceAmount   decimal.Decimal
+	ChannelPriceAmount decimal.Decimal
 }
 
 // ResolveUnitAmount 按 SKU → 商品 → 资料默认加价 → 继承底价的优先级解析成交单价。
@@ -52,12 +53,13 @@ func ResolveUnitAmount(profile *resellerdomain.Profile, productSetting *reseller
 func ApplyPricingRule(setting resellerdomain.ProductSetting, source string, baseUnit decimal.Decimal) (decimal.Decimal, PricingRule, error) {
 	settingID := setting.ID
 	rule := PricingRule{
-		Mode:              strings.TrimSpace(setting.PricingMode),
-		Source:            source,
-		SettingID:         &settingID,
-		MarkupPercent:     setting.MarkupPercent.Decimal.Round(2),
-		FixedMarkupAmount: setting.FixedMarkupAmount.Decimal.Round(2),
-		FixedPriceAmount:  setting.FixedPriceAmount.Decimal.Round(2),
+		Mode:               strings.TrimSpace(setting.PricingMode),
+		Source:             source,
+		SettingID:          &settingID,
+		MarkupPercent:      setting.MarkupPercent.Decimal.Round(2),
+		FixedMarkupAmount:  setting.FixedMarkupAmount.Decimal.Round(2),
+		FixedPriceAmount:   setting.FixedPriceAmount.Decimal.Round(2),
+		ChannelPriceAmount: setting.ChannelPriceAmount.Decimal.Round(2),
 	}
 	switch rule.Mode {
 	case resellerdomain.PricingModeMarkupPercent:
@@ -66,6 +68,8 @@ func ApplyPricingRule(setting resellerdomain.ProductSetting, source string, base
 		return baseUnit.Add(rule.FixedMarkupAmount).Round(2), rule, nil
 	case resellerdomain.PricingModeFixedPrice:
 		return rule.FixedPriceAmount.Round(2), rule, nil
+	case resellerdomain.PricingModeChannelPrice:
+		return rule.ChannelPriceAmount.Round(2), rule, nil
 	case resellerdomain.PricingModeInherit:
 		return baseUnit.Round(2), rule, nil
 	default:
@@ -95,4 +99,26 @@ func ValidateUnitAmount(profile *resellerdomain.Profile, sku *productdomain.Prod
 		}
 	}
 	return nil
+}
+
+// ValidateChannelUnitAmount 校验渠道价：必须为正数，且不得低于 SKU 成本价（成本价为 0 时不限制下限）。
+// 渠道价允许低于主站零售底价——这正是批发采购模式的进货成本语义。
+func ValidateChannelUnitAmount(sku *productdomain.ProductSKU, channelUnit decimal.Decimal) error {
+	channelUnit = channelUnit.Round(2)
+	if channelUnit.LessThanOrEqual(decimal.Zero) {
+		return resellercontract.ErrPriceBelowBase
+	}
+	if sku != nil && sku.CostPriceAmount.Decimal.GreaterThan(decimal.Zero) && channelUnit.LessThan(sku.CostPriceAmount.Decimal.Round(2)) {
+		return resellercontract.ErrPriceBelowBase
+	}
+	return nil
+}
+
+// ValidateResolvedUnitAmount 按最终解析出的规则模式分派校验。
+// 渠道价模式使用 ValidateChannelUnitAmount（允许低于底价），其余模式沿用 ValidateUnitAmount。
+func ValidateResolvedUnitAmount(profile *resellerdomain.Profile, sku *productdomain.ProductSKU, baseUnit decimal.Decimal, resellerUnit decimal.Decimal, rule PricingRule) error {
+	if rule.Mode == resellerdomain.PricingModeChannelPrice {
+		return ValidateChannelUnitAmount(sku, resellerUnit)
+	}
+	return ValidateUnitAmount(profile, sku, baseUnit, resellerUnit)
 }

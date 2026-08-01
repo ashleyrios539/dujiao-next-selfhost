@@ -292,7 +292,7 @@ export interface ResellerSiteConfigSnapshotData {
     config?: ResellerSiteConfigData
 }
 
-export type ResellerPricingMode = 'inherit' | 'markup_percent' | 'fixed_markup' | 'fixed_price'
+export type ResellerPricingMode = 'inherit' | 'markup_percent' | 'fixed_markup' | 'fixed_price' | 'channel_price'
 
 export interface ResellerProductSettingData {
     id?: number
@@ -303,6 +303,7 @@ export interface ResellerProductSettingData {
     markup_percent: string
     fixed_markup_amount: string
     fixed_price_amount: string
+    channel_price_amount: string
     effective_price_amount?: string
     rule_source?: string
     sort_order: number
@@ -325,6 +326,8 @@ export interface ResellerProductSettingProductData {
     title: Record<string, string>
     price_amount: string
     is_active: boolean
+    card_check_enabled: boolean
+    card_check_fee: string
 }
 
 export interface ResellerProductSettingDetailData {
@@ -340,6 +343,7 @@ export interface ResellerProductSettingPayloadItem {
     markup_percent: string
     fixed_markup_amount: string
     fixed_price_amount: string
+    channel_price_amount: string
     sort_order: number
 }
 
@@ -358,6 +362,41 @@ export interface ResellerProductSettingPreviewItem {
 
 export interface ResellerProductSettingPreviewData {
     items: ResellerProductSettingPreviewItem[]
+}
+
+export interface WholesalePurchaseItemPayload {
+    product_id: number
+    sku_id?: number
+    quantity: number
+    fulfillment_type?: string
+    card_check_enabled?: boolean
+}
+
+export interface WholesalePurchasePayload {
+    items: WholesalePurchaseItemPayload[]
+}
+
+export interface WholesalePurchasePreviewItemData {
+    product_id: number
+    sku_id: number
+    quantity: number
+    unit_price: string
+    total_price: string
+    card_check_enabled: boolean
+}
+
+export interface WholesalePurchasePreviewData {
+    currency: string
+    total_amount: string
+    original_amount: string
+    items: WholesalePurchasePreviewItemData[]
+}
+
+export interface WholesalePurchaseCreatedData {
+    order_id: number
+    order_no: string
+    currency: string
+    total_amount: string
 }
 
 export interface ResellerBalanceData {

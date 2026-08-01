@@ -1,4 +1,4 @@
-package application
+﻿package application
 
 import (
 	"context"
@@ -63,7 +63,7 @@ func TestResellerDomainResolverActiveDomain(t *testing.T) {
 		Domain:     "shop.example.test",
 		Profile:    &resellerdomain.Profile{ID: id, UserID: 88, Status: resellerdomain.ProfileStatusActive},
 	}}
-	resolver := NewDomainResolver(repo, config.ResellerConfig{Enabled: true, MainHosts: []string{"main.example.test"}})
+	resolver := NewDomainResolver(repo, config.ResellerConfig{Enabled: true, SubSitesEnabled: true, MainHosts: []string{"main.example.test"}})
 	tenant, err := resolver.ResolveHost(context.Background(), "shop.example.test")
 	if err != nil {
 		t.Fatalf("resolve reseller host failed: %v", err)
@@ -85,7 +85,7 @@ func TestResellerDomainResolverInactiveProfileUnavailable(t *testing.T) {
 		Status:     resellerdomain.DomainStatusActive,
 		Profile:    &resellerdomain.Profile{ID: id, UserID: 88, Status: resellerdomain.ProfileStatusDisabled},
 	}}
-	resolver := NewDomainResolver(repo, config.ResellerConfig{Enabled: true, MainHosts: []string{"main.example.test"}})
+	resolver := NewDomainResolver(repo, config.ResellerConfig{Enabled: true, SubSitesEnabled: true, MainHosts: []string{"main.example.test"}})
 	tenant, err := resolver.ResolveHost(context.Background(), "shop.example.test")
 	if err != nil {
 		t.Fatalf("resolve disabled profile host failed: %v", err)
@@ -106,6 +106,7 @@ func TestResellerDomainResolverRequestUsesTrustedForwardedHost(t *testing.T) {
 	resolver := NewDomainResolver(repo, config.ResellerConfig{
 		Enabled:              true,
 		MainHosts:            []string{"main.example.test"},
+		SubSitesEnabled:      true,
 		TrustedForwardedHost: true,
 	})
 	req, err := http.NewRequest(http.MethodGet, "https://internal.example.test/api/v1/public/config", nil)
@@ -128,7 +129,7 @@ func TestResellerDomainResolverRequestUsesTrustedForwardedHost(t *testing.T) {
 
 func TestResellerDomainResolverUnknownDomainUnavailable(t *testing.T) {
 	repo := &resellerResolverRepoStub{}
-	resolver := NewDomainResolver(repo, config.ResellerConfig{Enabled: true, MainHosts: []string{"main.example.test"}})
+	resolver := NewDomainResolver(repo, config.ResellerConfig{Enabled: true, SubSitesEnabled: true, MainHosts: []string{"main.example.test"}})
 	tenant, err := resolver.ResolveHost(context.Background(), "unknown.example.test")
 	if err != nil {
 		t.Fatalf("unknown domain should not return technical error: %v", err)
@@ -140,9 +141,10 @@ func TestResellerDomainResolverUnknownDomainUnavailable(t *testing.T) {
 
 func TestResellerDomainResolverRepoError(t *testing.T) {
 	repo := &resellerResolverRepoStub{err: errors.New("db down")}
-	resolver := NewDomainResolver(repo, config.ResellerConfig{Enabled: true, MainHosts: []string{"main.example.test"}})
+	resolver := NewDomainResolver(repo, config.ResellerConfig{Enabled: true, SubSitesEnabled: true, MainHosts: []string{"main.example.test"}})
 	_, err := resolver.ResolveHost(context.Background(), "shop.example.test")
 	if err == nil {
 		t.Fatal("expected repository error")
 	}
 }
+

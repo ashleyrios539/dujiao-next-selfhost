@@ -13,6 +13,7 @@ import type {
   AdminResellerProductSettingSKU,
 } from '@/api/types'
 import {
+  RESELLER_PRICING_MODE_CHANNEL_PRICE,
   RESELLER_PRICING_MODE_FIXED_MARKUP,
   RESELLER_PRICING_MODE_FIXED_PRICE,
   RESELLER_PRICING_MODE_INHERIT,
@@ -84,6 +85,7 @@ const pricingModes = [
   RESELLER_PRICING_MODE_MARKUP_PERCENT,
   RESELLER_PRICING_MODE_FIXED_MARKUP,
   RESELLER_PRICING_MODE_FIXED_PRICE,
+  RESELLER_PRICING_MODE_CHANNEL_PRICE,
 ]
 
 function createBlankForm(skuID: number): AdminResellerProductSettingPayloadItem {
@@ -94,6 +96,7 @@ function createBlankForm(skuID: number): AdminResellerProductSettingPayloadItem 
     markup_percent: '0.00',
     fixed_markup_amount: '0.00',
     fixed_price_amount: '0.00',
+    channel_price_amount: '0.00',
     sort_order: 0,
   }
 }
@@ -115,6 +118,7 @@ const formFromRule = (
   markup_percent: moneyOrZero(rule?.markup_percent),
   fixed_markup_amount: moneyOrZero(rule?.fixed_markup_amount),
   fixed_price_amount: moneyOrZero(rule?.fixed_price_amount),
+  channel_price_amount: moneyOrZero(rule?.channel_price_amount),
   sort_order: Number(rule?.sort_order || 0),
 })
 
@@ -282,6 +286,7 @@ const pricingModeKey = (mode?: string) => {
   if (mode === RESELLER_PRICING_MODE_MARKUP_PERCENT) return 'markupPercent'
   if (mode === RESELLER_PRICING_MODE_FIXED_MARKUP) return 'fixedMarkup'
   if (mode === RESELLER_PRICING_MODE_FIXED_PRICE) return 'fixedPrice'
+  if (mode === RESELLER_PRICING_MODE_CHANNEL_PRICE) return 'channelPrice'
   return 'unknown'
 }
 
@@ -293,10 +298,12 @@ const pricingValue = (row: {
   markup_percent: string | number
   fixed_markup_amount: string | number
   fixed_price_amount: string | number
+  channel_price_amount: string | number
 }) => {
   if (row.pricing_mode === RESELLER_PRICING_MODE_MARKUP_PERCENT) return `${row.markup_percent}%`
   if (row.pricing_mode === RESELLER_PRICING_MODE_FIXED_MARKUP) return `+${row.fixed_markup_amount}`
   if (row.pricing_mode === RESELLER_PRICING_MODE_FIXED_PRICE) return String(row.fixed_price_amount)
+  if (row.pricing_mode === RESELLER_PRICING_MODE_CHANNEL_PRICE) return String(row.channel_price_amount)
   return '-'
 }
 
@@ -524,7 +531,7 @@ onMounted(() => {
               <h2 class="text-sm font-semibold text-foreground">{{ t('admin.resellerProductSettings.columns.product') }}</h2>
               <span class="text-xs text-muted-foreground">#{{ detail.product.id }} / {{ detail.product.slug }}</span>
             </div>
-            <div class="grid gap-3 lg:grid-cols-[minmax(180px,1fr)_120px_170px_repeat(3,minmax(120px,1fr))_minmax(150px,170px)] lg:items-end">
+            <div class="grid gap-3 lg:grid-cols-[minmax(180px,1fr)_120px_170px_repeat(4,minmax(120px,1fr))_minmax(150px,170px)] lg:items-end">
               <div>
                 <Label>{{ t('admin.resellerProductSettings.columns.product') }}</Label>
                 <div class="mt-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
@@ -561,6 +568,10 @@ onMounted(() => {
                 <Input v-model="productForm.fixed_price_amount" class="mt-2 h-9 font-mono" />
               </div>
               <div>
+                <Label>{{ t('admin.resellerProductSettings.modes.channelPrice') }}</Label>
+                <Input v-model="productForm.channel_price_amount" class="mt-2 h-9 font-mono" />
+              </div>
+              <div>
                 <Label>{{ t('admin.resellerProductSettings.preview.effectivePrice') }}</Label>
                 <div
                   class="mt-2 rounded-md border px-3 py-2 font-mono text-sm"
@@ -579,7 +590,7 @@ onMounted(() => {
               <div
                 v-for="sku in detail.skus"
                 :key="sku.id"
-                class="grid gap-3 rounded-md border border-border p-3 lg:grid-cols-[minmax(180px,1fr)_120px_170px_repeat(3,minmax(120px,1fr))_minmax(150px,170px)] lg:items-end"
+                class="grid gap-3 rounded-md border border-border p-3 lg:grid-cols-[minmax(180px,1fr)_120px_170px_repeat(4,minmax(120px,1fr))_minmax(150px,170px)] lg:items-end"
               >
                 <div>
                   <Label>{{ t('admin.resellerProductSettings.columns.sku') }}</Label>
@@ -615,6 +626,10 @@ onMounted(() => {
                 <div>
                   <Label>{{ t('admin.resellerProductSettings.modes.fixedPrice') }}</Label>
                   <Input :model-value="skuFormFor(sku.id).fixed_price_amount" class="mt-2 h-9 font-mono" @update:modelValue="(value) => updateSkuForm(sku.id, { ...skuFormFor(sku.id), fixed_price_amount: String(value) })" />
+                </div>
+                <div>
+                  <Label>{{ t('admin.resellerProductSettings.modes.channelPrice') }}</Label>
+                  <Input :model-value="skuFormFor(sku.id).channel_price_amount" class="mt-2 h-9 font-mono" @update:modelValue="(value) => updateSkuForm(sku.id, { ...skuFormFor(sku.id), channel_price_amount: String(value) })" />
                 </div>
                 <div>
                   <Label>{{ t('admin.resellerProductSettings.preview.effectivePrice') }}</Label>

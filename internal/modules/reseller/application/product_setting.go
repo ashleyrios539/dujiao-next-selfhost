@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
@@ -27,13 +28,14 @@ func NewProductSettingService(store resellercontract.ProductSettingStore, produc
 }
 
 type ProductSettingInput struct {
-	SKUID             uint
-	IsListed          bool
-	PricingMode       string
-	MarkupPercent     decimal.Decimal
-	FixedMarkupAmount decimal.Decimal
-	FixedPriceAmount  decimal.Decimal
-	SortOrder         int
+	SKUID              uint
+	IsListed           bool
+	PricingMode        string
+	MarkupPercent      decimal.Decimal
+	FixedMarkupAmount  decimal.Decimal
+	FixedPriceAmount   decimal.Decimal
+	ChannelPriceAmount decimal.Decimal
+	SortOrder          int
 }
 
 type ProductSettingSaveInput struct {
@@ -293,18 +295,19 @@ func normalizeProductSettingInput(profile *resellerdomain.Profile, product *prod
 		mode = resellerdomain.PricingModeInherit
 	}
 	switch mode {
-	case resellerdomain.PricingModeInherit, resellerdomain.PricingModeMarkupPercent, resellerdomain.PricingModeFixedMarkup, resellerdomain.PricingModeFixedPrice:
+	case resellerdomain.PricingModeInherit, resellerdomain.PricingModeMarkupPercent, resellerdomain.PricingModeFixedMarkup, resellerdomain.PricingModeFixedPrice, resellerdomain.PricingModeChannelPrice:
 	default:
 		return resellerdomain.ProductSetting{}, resellercontract.ErrPricingModeInvalid
 	}
 	setting := resellerdomain.ProductSetting{
-		SKUID:             input.SKUID,
-		IsListed:          input.IsListed,
-		PricingMode:       mode,
-		MarkupPercent:     money.FromDecimal(input.MarkupPercent.Round(2)),
-		FixedMarkupAmount: money.FromDecimal(input.FixedMarkupAmount.Round(2)),
-		FixedPriceAmount:  money.FromDecimal(input.FixedPriceAmount.Round(2)),
-		SortOrder:         input.SortOrder,
+		SKUID:              input.SKUID,
+		IsListed:           input.IsListed,
+		PricingMode:        mode,
+		MarkupPercent:      money.FromDecimal(input.MarkupPercent.Round(2)),
+		FixedMarkupAmount:  money.FromDecimal(input.FixedMarkupAmount.Round(2)),
+		FixedPriceAmount:   money.FromDecimal(input.FixedPriceAmount.Round(2)),
+		ChannelPriceAmount: money.FromDecimal(input.ChannelPriceAmount.Round(2)),
+		SortOrder:          input.SortOrder,
 	}
 	if !setting.IsListed {
 		return setting, nil
@@ -314,22 +317,22 @@ func normalizeProductSettingInput(profile *resellerdomain.Profile, product *prod
 		if sku == nil || !sku.IsActive {
 			return resellerdomain.ProductSetting{}, productcontract.ErrProductSKUInvalid
 		}
-		price, _, err := ResolveUnitAmount(profile, nil, &setting, sku.PriceAmount.Decimal.Round(2))
+		price, rule, err := ResolveUnitAmount(profile, nil, &setting, sku.PriceAmount.Decimal.Round(2))
 		if err != nil {
 			return resellerdomain.ProductSetting{}, err
 		}
-		if err := ValidateUnitAmount(profile, sku, sku.PriceAmount.Decimal.Round(2), price); err != nil {
+		if err := ValidateResolvedUnitAmount(profile, sku, sku.PriceAmount.Decimal.Round(2), price, rule); err != nil {
 			return resellerdomain.ProductSetting{}, err
 		}
 		return setting, nil
 	}
 	if len(product.SKUs) == 0 {
 		basePrice := product.PriceAmount.Decimal.Round(2)
-		price, _, err := ResolveUnitAmount(profile, &setting, nil, basePrice)
+		price, rule, err := ResolveUnitAmount(profile, &setting, nil, basePrice)
 		if err != nil {
 			return resellerdomain.ProductSetting{}, err
 		}
-		if err := ValidateUnitAmount(profile, nil, basePrice, price); err != nil {
+		if err := ValidateResolvedUnitAmount(profile, nil, basePrice, price, rule); err != nil {
 			return resellerdomain.ProductSetting{}, err
 		}
 		costPrice := product.CostPriceAmount.Decimal.Round(2)
@@ -343,11 +346,11 @@ func normalizeProductSettingInput(profile *resellerdomain.Profile, product *prod
 		if !sku.IsActive {
 			continue
 		}
-		price, _, err := ResolveUnitAmount(profile, &setting, nil, sku.PriceAmount.Decimal.Round(2))
+		price, rule, err := ResolveUnitAmount(profile, &setting, nil, sku.PriceAmount.Decimal.Round(2))
 		if err != nil {
 			return resellerdomain.ProductSetting{}, err
 		}
-		if err := ValidateUnitAmount(profile, sku, sku.PriceAmount.Decimal.Round(2), price); err != nil {
+		if err := ValidateResolvedUnitAmount(profile, sku, sku.PriceAmount.Decimal.Round(2), price, rule); err != nil {
 			return resellerdomain.ProductSetting{}, err
 		}
 	}
@@ -395,10 +398,10 @@ func (s *ProductSettingService) previewSettings(profile *resellerdomain.Profile,
 		Valid:     true,
 	}
 	if productSetting != nil && productSetting.IsListed {
-		price, _, _ := ResolveUnitAmount(profile, productSetting, nil, productBase)
+		price, rule, _ := ResolveUnitAmount(profile, productSetting, nil, productBase)
 		productItem.EffectivePrice = price.Round(2)
 		if len(product.SKUs) == 0 {
-			perr := ValidateUnitAmount(profile, nil, productBase, price)
+			perr := ValidateResolvedUnitAmount(profile, nil, productBase, price, rule)
 			if perr == nil {
 				cost := product.CostPriceAmount.Decimal.Round(2)
 				if cost.GreaterThan(decimal.Zero) && price.LessThan(cost) {
@@ -426,9 +429,9 @@ func (s *ProductSettingService) previewSettings(profile *resellerdomain.Profile,
 			items = append(items, item)
 			continue
 		}
-		price, _, perr := ResolveUnitAmount(profile, productSetting, skuSetting, base)
+		price, rule, perr := ResolveUnitAmount(profile, productSetting, skuSetting, base)
 		if perr == nil {
-			perr = ValidateUnitAmount(profile, sku, base, price)
+			perr = ValidateResolvedUnitAmount(profile, sku, base, price, rule)
 		}
 		item.EffectivePrice = price.Round(2)
 		item.Valid = perr == nil
@@ -444,18 +447,19 @@ func buildPreviewSetting(input ProductSettingInput) (resellerdomain.ProductSetti
 		mode = resellerdomain.PricingModeInherit
 	}
 	switch mode {
-	case resellerdomain.PricingModeInherit, resellerdomain.PricingModeMarkupPercent, resellerdomain.PricingModeFixedMarkup, resellerdomain.PricingModeFixedPrice:
+	case resellerdomain.PricingModeInherit, resellerdomain.PricingModeMarkupPercent, resellerdomain.PricingModeFixedMarkup, resellerdomain.PricingModeFixedPrice, resellerdomain.PricingModeChannelPrice:
 	default:
 		return resellerdomain.ProductSetting{}, resellercontract.ErrPricingModeInvalid
 	}
 	return resellerdomain.ProductSetting{
-		SKUID:             input.SKUID,
-		IsListed:          input.IsListed,
-		PricingMode:       mode,
-		MarkupPercent:     money.FromDecimal(input.MarkupPercent.Round(2)),
-		FixedMarkupAmount: money.FromDecimal(input.FixedMarkupAmount.Round(2)),
-		FixedPriceAmount:  money.FromDecimal(input.FixedPriceAmount.Round(2)),
-		SortOrder:         input.SortOrder,
+		SKUID:              input.SKUID,
+		IsListed:           input.IsListed,
+		PricingMode:        mode,
+		MarkupPercent:      money.FromDecimal(input.MarkupPercent.Round(2)),
+		FixedMarkupAmount:  money.FromDecimal(input.FixedMarkupAmount.Round(2)),
+		FixedPriceAmount:   money.FromDecimal(input.FixedPriceAmount.Round(2)),
+		ChannelPriceAmount: money.FromDecimal(input.ChannelPriceAmount.Round(2)),
+		SortOrder:          input.SortOrder,
 	}, nil
 }
 
@@ -466,9 +470,9 @@ func previewValidateProductRuleAcrossSKUs(profile *resellerdomain.Profile, produ
 			continue
 		}
 		base := sku.PriceAmount.Decimal.Round(2)
-		price, _, err := ResolveUnitAmount(profile, productSetting, nil, base)
+		price, rule, err := ResolveUnitAmount(profile, productSetting, nil, base)
 		if err == nil {
-			err = ValidateUnitAmount(profile, sku, base, price)
+			err = ValidateResolvedUnitAmount(profile, sku, base, price, rule)
 		}
 		if err != nil {
 			return false, previewErrorCode(err)
@@ -550,4 +554,86 @@ func findProductSKU(items []productdomain.ProductSKU, skuID uint) *productdomain
 		}
 	}
 	return nil
+}
+
+// PurchaseProfileStore 批发采购查询分销商资料所需的最小持久化接口。
+type PurchaseProfileStore interface {
+	GetProfileByUserID(userID uint) (*resellerdomain.Profile, error)
+}
+
+// PurchaseService 主站代理中心渠道价批发采购用例。
+// 子站关闭（sub_sites_enabled=false）模式下，分销商以主站身份按渠道价批量下单。
+type PurchaseService struct {
+	store   PurchaseProfileStore
+	catalog *ProductSettingService
+	gateway resellercontract.WholesaleOrderGateway
+}
+
+func NewPurchaseService(store PurchaseProfileStore, catalog *ProductSettingService, gateway resellercontract.WholesaleOrderGateway) *PurchaseService {
+	return &PurchaseService{store: store, catalog: catalog, gateway: gateway}
+}
+
+// ListCatalog 返回当前分销商可批发采购的商品列表（含按分销规则解析的渠道价）。
+func (s *PurchaseService) ListCatalog(userID uint, input ProductSettingUserListInput) ([]ProductSettingListRow, int64, error) {
+	if s == nil || s.catalog == nil || userID == 0 {
+		return nil, 0, productcontract.ErrNotFound
+	}
+	return s.catalog.ListUserProductSettings(userID, input)
+}
+
+// Preview 按渠道价预览批发采购订单金额（不落库）。
+func (s *PurchaseService) Preview(userID uint, host, clientIP string, items []resellercontract.WholesaleItemInput) (*resellercontract.WholesalePreview, error) {
+	profile, err := s.requireActiveProfile(userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, resellercontract.ErrNotOpened
+	}
+	if s.gateway == nil {
+		return nil, resellercontract.ErrAccountingUnavailable
+	}
+	return s.gateway.Preview(context.Background(), resellercontract.WholesaleOrderInput{
+		UserID:   userID,
+		Tenant:   resellercontract.ResellerPurchaseContext(host, profile.ID, profile.UserID),
+		Items:    items,
+		ClientIP: clientIP,
+	})
+}
+
+// Create 按渠道价创建批发采购订单（买家为分销商本人，走现有支付流程）。
+func (s *PurchaseService) Create(userID uint, host, clientIP string, items []resellercontract.WholesaleItemInput) (*resellercontract.WholesaleCreated, error) {
+	profile, err := s.requireActiveProfile(userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, resellercontract.ErrNotOpened
+	}
+	if s.gateway == nil {
+		return nil, resellercontract.ErrAccountingUnavailable
+	}
+	return s.gateway.Create(context.Background(), resellercontract.WholesaleOrderInput{
+		UserID:   userID,
+		Tenant:   resellercontract.ResellerPurchaseContext(host, profile.ID, profile.UserID),
+		Items:    items,
+		ClientIP: clientIP,
+	})
+}
+
+func (s *PurchaseService) requireActiveProfile(userID uint) (*resellerdomain.Profile, error) {
+	if s == nil || s.store == nil || userID == 0 {
+		return nil, productcontract.ErrNotFound
+	}
+	profile, err := s.store.GetProfileByUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	if profile == nil {
+		return nil, resellercontract.ErrNotOpened
+	}
+	if profile.Status != resellerdomain.ProfileStatusActive {
+		return nil, resellercontract.ErrProfileInactive
+	}
+	return profile, nil
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -50,7 +51,7 @@ func setupAdminResellerManagementHandlerTest(t *testing.T) (*adminResellerFixtur
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	dsn := fmt.Sprintf("file:admin_reseller_management_%d?mode=memory&cache=shared", time.Now().UnixNano())
+	dsn := uniqueInMemoryDSN("admin_reseller_management")
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open db failed: %v", err)
@@ -89,6 +90,7 @@ func setupAdminResellerManagementHandlerTest(t *testing.T) (*adminResellerFixtur
 			Enabled:          true,
 			SelfApplyEnabled: true,
 			SubdomainBase:    "shop.example.test",
+			SubSitesEnabled:  true,
 			MainHosts:        []string{"main.example.test"},
 		}),
 		ResellerProductSettingService: resellermodule.NewProductSettingService(resellerStore, productRepo),
@@ -131,9 +133,12 @@ func adminResellerSiteConfigHTTP(h *adminResellerFixture) *resellerhttp.AdminSit
 	return resellerhttp.NewAdminSiteConfigHandler(h.ResellerSiteConfigService, h.ResellerStore, h.AuthzAuditService)
 }
 
+// resellerManagementUserSeed 提供确定性的用户种子递增序号，避免依赖 time.Now 的时钟分辨率导致同名。
+var resellerManagementUserSeed int64
+
 func seedAdminResellerManagementProfile(t *testing.T, db *gorm.DB, status string) resellerdomain.Profile {
 	t.Helper()
-	user := userdomain.User{Email: fmt.Sprintf("reseller-management-%d@example.test", time.Now().UnixNano()), PasswordHash: "hash", DisplayName: "Reseller Management"}
+	user := userdomain.User{Email: fmt.Sprintf("reseller-management-%d@example.test", atomic.AddInt64(&resellerManagementUserSeed, 1)), PasswordHash: "hash", DisplayName: "Reseller Management"}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}

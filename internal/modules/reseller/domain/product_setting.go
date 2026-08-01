@@ -18,6 +18,7 @@ type ProductSetting struct {
 	MarkupPercent     money.Amount `gorm:"type:decimal(10,2);not null;default:0" json:"markup_percent"`
 	FixedMarkupAmount money.Amount `gorm:"type:decimal(20,2);not null;default:0" json:"fixed_markup_amount"`
 	FixedPriceAmount  money.Amount `gorm:"type:decimal(20,2);not null;default:0" json:"fixed_price_amount"`
+	ChannelPriceAmount money.Amount `gorm:"type:decimal(20,2);not null;default:0" json:"channel_price_amount"`
 	SortOrder         int          `gorm:"not null;default:0;index" json:"sort_order"`
 	CreatedAt         time.Time    `gorm:"index" json:"created_at"`
 	UpdatedAt         time.Time    `gorm:"index" json:"updated_at"`

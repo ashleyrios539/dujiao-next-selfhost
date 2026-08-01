@@ -226,6 +226,7 @@ const router = createRouter({
             children: [
                 { path: '', name: 'reseller-dashboard', component: () => import('../views/reseller/ResellerDashboard.vue') },
                 { path: 'apply', name: 'reseller-apply', component: () => import('../views/reseller/ResellerApply.vue') },
+                { path: 'wholesale', name: 'reseller-wholesale', component: () => import('../views/reseller/ResellerWholesale.vue') },
                 { path: 'domains', name: 'reseller-domains', component: () => import('../views/reseller/ResellerDomains.vue') },
                 { path: 'site', name: 'reseller-site', component: () => import('../views/reseller/ResellerSiteConfig.vue') },
                 { path: 'products', name: 'reseller-products', component: () => import('../views/reseller/ResellerProducts.vue') },
@@ -343,6 +344,12 @@ router.beforeEach(async (to, _from, next) => {
             next(`/auth/login?redirect=${redirect}`)
         } else if (to.meta.resellerConsole && !appStore.canAccessResellerConsole) {
             next('/me/orders')
+        } else if (
+            to.meta.resellerConsole &&
+            !appStore.resellerSubSitesEnabled &&
+            (to.path === '/reseller/domains' || to.path === '/reseller/site' || to.path === '/reseller/products')
+        ) {
+            next('/reseller')
         } else {
             next()
         }

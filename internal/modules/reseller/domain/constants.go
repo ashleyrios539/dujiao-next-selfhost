@@ -24,6 +24,8 @@ const (
 	PricingModeMarkupPercent = "markup_percent"
 	PricingModeFixedMarkup   = "fixed_markup"
 	PricingModeFixedPrice    = "fixed_price"
+	// PricingModeChannelPrice 渠道价模式（批发采购进价，允许低于主站零售价，不得低于成本价）。
+	PricingModeChannelPrice = "channel_price"
 
 	LedgerTypeOrderProfit  = "order_profit"
 	LedgerTypeRefundDeduct = "refund_deduct"

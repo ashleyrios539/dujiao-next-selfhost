@@ -45,5 +45,6 @@ func NewHandler(c *container.Container) *publicconfigtransport.Handler {
 		google,
 		googleFallback,
 		overlay,
+		c.Config.Reseller,
 	)
 }
