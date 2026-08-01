@@ -19,7 +19,6 @@ const form = reactive({
   enabled: false,
   kami: '',
   interface: '',
-  country: '美国',
   buffer: 5,
   timeout_seconds: 60,
   poll_interval_millis: 2000,
@@ -44,7 +43,6 @@ const loadConfig = async () => {
       form.enabled = data.enabled === true
       form.kami = toText(data.kami)
       form.interface = toText(data.interface)
-      form.country = toText(data.country) || '美国'
       form.buffer = clamp(data.buffer, 0, 100, 5)
       form.timeout_seconds = clamp(data.timeout_seconds, 10, 300, 60)
       form.poll_interval_millis = clamp(data.poll_interval_millis, 500, 10000, 2000)
@@ -63,7 +61,6 @@ const save = async () => {
       enabled: form.enabled,
       kami: form.kami.trim(),
       interface: form.interface.trim(),
-      country: form.country.trim() || '美国',
       buffer: clamp(form.buffer, 0, 100, 5),
       timeout_seconds: clamp(form.timeout_seconds, 10, 300, 60),
       poll_interval_millis: clamp(form.poll_interval_millis, 500, 10000, 2000),
@@ -169,18 +166,6 @@ onMounted(() => {
         <label class="text-xs font-medium text-muted-foreground">{{ t('admin.settings.cardCheck.interface.label') }}</label>
         <Input v-model="form.interface" :placeholder="t('admin.settings.cardCheck.interface.placeholder')" />
         <p class="text-xs text-muted-foreground">{{ t('admin.settings.cardCheck.interface.hint') }}</p>
-      </div>
-    </div>
-
-    <div class="rounded-lg border p-6 space-y-4">
-      <div>
-        <h3 class="text-sm font-semibold">{{ t('admin.settings.cardCheck.country.title') }}</h3>
-        <p class="mt-1 text-xs text-muted-foreground">{{ t('admin.settings.cardCheck.country.subtitle') }}</p>
-      </div>
-      <div class="space-y-1">
-        <label class="text-xs font-medium text-muted-foreground">{{ t('admin.settings.cardCheck.country.label') }}</label>
-        <Input v-model="form.country" :placeholder="t('admin.settings.cardCheck.country.placeholder')" />
-        <p class="text-xs text-muted-foreground">{{ t('admin.settings.cardCheck.country.hint') }}</p>
       </div>
     </div>
 

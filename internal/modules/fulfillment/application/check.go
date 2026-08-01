@@ -13,7 +13,7 @@ import (
 
 // CardChecker 交付前测活端口，由 internal/upstream/cardcheck.Client 实现。
 type CardChecker interface {
-	CheckCards(ctx context.Context, kami, interfaceID, country string, cards []cardcheck.Card, opts cardcheck.Options) []cardcheck.Result
+	CheckCards(ctx context.Context, kami, interfaceID string, cards []cardcheck.Card, opts cardcheck.Options) []cardcheck.Result
 }
 
 // runCardCheck 对订单内启用测活的商品执行交付前测活。
@@ -82,7 +82,7 @@ func (s *Service) runCardCheck(ctx context.Context, order *orderdomain.Order, ch
 			continue
 		}
 
-		results := s.cardChecker.CheckCards(ctx, cfg.Kami, cfg.Interface, cfg.Country, cards, opts)
+		results := s.cardChecker.CheckCards(ctx, cfg.Kami, cfg.Interface, cards, opts)
 
 		// 仅对 CheckDx 明确给出非活状态的卡片标记失效；
 		// 未返回结果（API 故障/维护/超时）的卡片保持原状态，交由重试或人工处理，避免误清库存。

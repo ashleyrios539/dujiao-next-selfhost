@@ -108,7 +108,7 @@ reseller:
 
 | 模块 | 文件 | 作用 |
 |---|---|---|
-| 测活客户端 | `internal/upstream/cardcheck/` | CheckDx HTTP 客户端（verify/get_post/get_card/history轮询/xiaofei退点）+ 卡密解析 `ParseCard` |
+| 测活客户端 | `internal/upstream/cardcheck/` | CheckDx /v1 HTTP 客户端（balance/submit/result轮询/cancel退点）+ 卡密解析 `ParseCard` |
 | 交付测活编排 | `internal/modules/fulfillment/application/check.go` | `runCardCheck`（选卡→测活→死卡标invalid）+ `CardChecker` 端口 |
 | 交付主流程 | `internal/modules/fulfillment/application/service.go` | `CreateAuto` 中按 `orderItem.CardCheckEnabled` 判定是否测活 |
 | 价格计算 | `internal/modules/order/application/order_service_validate.go` | `buildOrderResult`：测活价并入 basePrice 后参与优惠计算 |
@@ -122,7 +122,7 @@ reseller:
 `internal/modules/cardsecret/domain/secret.go`：`available` / `reserved` / `used` / `invalid`（invalid = 测活死卡，不再上架）。
 
 ### CheckDx 计费要点
-按条扣"点数"；任务结束必须调 `xiaofei` 结束并退回未检测卡的点数（`CheckCards` 已处理）。接口 `interface` 值需在 CheckDx 网页端获取（含维护状态）。
+按条扣"点数"；任务结束必须调 `POST /v1/cancel` 结束并退回未检测卡的点数（`CheckCards` 已处理）。接口 `interface` 用短名 `post1`~`post6`（如 `post5`），可在 CheckDx 网页端"设置/接口"查看维护状态。
 
 ## 常用命令
 

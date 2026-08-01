@@ -481,7 +481,6 @@ const (
 	SettingFieldCardCheckEnabled     = "enabled"
 	SettingFieldCardCheckKami        = "kami"
 	SettingFieldCardCheckInterface   = "interface"
-	SettingFieldCardCheckCountry     = "country"
 	SettingFieldCardCheckBuffer      = "buffer"
 	SettingFieldCardCheckTimeout     = "timeout_seconds"
 	SettingFieldCardCheckPollMillis  = "poll_interval_millis"

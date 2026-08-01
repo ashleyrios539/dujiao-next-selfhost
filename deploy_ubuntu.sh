@@ -526,7 +526,7 @@ EOF
   echo ""
   echo "  curl -s -X PUT $base_url/api/v1/admin/settings \\"
   echo "    -H \"Authorization: Bearer \$TOKEN\" -H 'Content-Type: application/json' \\"
-  echo "    -d '{\"key\":\"card_check_config\",\"value\":{\"enabled\":true,\"kami\":\"你的CheckDx卡密\",\"interface\":\"post5（1.0pt）【✅ Open|开放中】_global\",\"country\":\"美国\",\"buffer\":5,\"timeout_seconds\":60,\"poll_interval_millis\":2000}}'"
+  echo "    -d '{\"key\":\"card_check_config\",\"value\":{\"enabled\":true,\"kami\":\"你的CheckDx卡密\",\"interface\":\"post5\",\"buffer\":5,\"timeout_seconds\":60,\"poll_interval_millis\":2000}}'"
   echo ""
   echo "  然后对自动发货商品开启测活："
   echo "  curl -s -X PATCH $base_url/api/v1/admin/products/商品ID \\"

@@ -371,8 +371,7 @@ sudo systemctl reload nginx
 
 - **启用测活**：总开关
 - **CheckDx 卡密**：在 dxchecklive.com 购买/充值的卡密（点数凭证）
-- **检测接口（站点）**：值需在 CheckDx 网页端"设置/接口"查看，维护中的接口不可用
-- **卡片发行国家**：默认 `美国`
+- **检测接口（站点）**：填**接口短名**（如 `post5`），可在 CheckDx 网页端"设置/接口"查看，维护中的接口不可用
 - **检测缓冲数量 / 检测超时 / 结果轮询间隔**：按需调整
 
 配置完成后，点卡密输入框旁的 **「测试连接」** 按钮，可立即校验卡密是否有效并显示剩余点数。
@@ -407,8 +406,7 @@ curl -s -X PUT https://shop.example.com/api/v1/admin/settings \
     "value": {
       "enabled": true,
       "kami": "你的CheckDx卡密",
-      "interface": "post5（1.0pt）【✅ Open|开放中】_global",
-      "country": "美国",
+      "interface": "post5",
       "buffer": 5,
       "timeout_seconds": 60,
       "poll_interval_millis": 2000
@@ -422,8 +420,7 @@ curl -s -X PUT https://shop.example.com/api/v1/admin/settings \
 |---|---|
 | `enabled` | 是否启用测活 |
 | `kami` | 你在 dxchecklive.com 购买/充值的卡密（点数余额） |
-| `interface` | 使用的检测接口/站点，值可在 CheckDx 网页端"设置/接口"中查看（含接口名与维护状态，维护中的接口不可用） |
-| `country` | 卡片发行国家，默认 `美国` |
+| `interface` | 使用的检测接口**短名**（`post1`~`post6`，如 `post5`），可在 CheckDx 网页端"设置/接口"查看，维护中的接口不可用 |
 | `buffer` | 每单额外多检测的卡数量（活卡不足时补充，默认 5） |
 | `timeout_seconds` | 单次检测最长等待秒数（默认 60，最大 300） |
 | `poll_interval_millis` | 结果轮询间隔毫秒（默认 2000） |
@@ -539,7 +536,7 @@ sudo systemctl restart dujiao
 | 启动报 `web.admin_path 配置错误` | 检查 `web.admin_path` 以 `/` 开头且不是 `/api`、`/uploads`、`/health` 等保留前缀 |
 | 后台打开空白 / 404 | 确认二进制为 fullstack 构建（启动日志含 `Embedded SPAs`），且 `web.admin_path` 与访问路径一致 |
 | 下单后一直"发货中"且日志有 `fulfillment_card_check_failed` | 检查 CheckDx 卡密余额、`interface` 是否维护中、服务器能否访问 `https://dxchecklive.com` |
-| 日志有 `checkdx_start_failed` | 多为卡密无效、余额不足或接口值错误；到 CheckDx 网页端核对 |
+| 日志有 `checkdx_submit_failed` | 多为卡密无效、余额不足或接口值错误（应填 `post1`~`post6` 短名）；到 CheckDx 网页端核对 |
 | 日志有 `checkdx_partial_results` | 部分卡超时未返回结果，可调大 `timeout_seconds`；未检测到的卡会退点且不标记失效 |
 | 所有卡都被标 `invalid` | 检查卡密导入格式是否符合测活解析规则（见第九节第 4 点） |
 

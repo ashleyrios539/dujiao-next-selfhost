@@ -7,13 +7,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dujiao-next/internal/logger"
 )
 
-// Client 是 CheckDx 测活 API 的 HTTP 客户端。
+// Client 是 CheckDx /v1 API 的 HTTP 客户端。
 type Client struct {
 	baseURL string
 	http    *http.Client
@@ -40,12 +42,12 @@ func WithHTTPClient(client *http.Client) Option {
 	}
 }
 
-// New 创建 CheckDx 客户端。
+// New 创建 CheckDx /v1 客户端。
 func New(opts ...Option) *Client {
 	client := &Client{
 		baseURL: DefaultBaseURL,
 		http: &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout: 30 * time.Second,
 		},
 	}
 	for _, opt := range opts {
@@ -54,138 +56,151 @@ func New(opts ...Option) *Client {
 	return client
 }
 
-// VerifyResponse 卡密验证结果。
-type VerifyResponse struct {
-	KamiNum *float64 `json:"kami_num"`
-	Result  string   `json:"result"`
+// BalanceResponse 余额查询响应。
+type BalanceResponse struct {
+	OK      bool   `json:"ok"`
+	APIKey  string `json:"api_key"`
+	Balance string `json:"balance"`
+	Error   string `json:"error"`
 }
 
-// Verify 验证卡密并返回剩余点数。
+// Verify 校验卡密并返回剩余点数。
+// 对应 GET /v1/balance，卡密通过 X-Api-Key 请求头传递。
 func (c *Client) Verify(ctx context.Context, kami string) (float64, error) {
-	var out VerifyResponse
-	if err := c.post(ctx, "/api/verify", map[string]interface{}{"cardCode": kami}, &out); err != nil {
+	kami = strings.TrimSpace(kami)
+	if kami == "" {
+		return 0, fmt.Errorf("checkdx verify: empty kami")
+	}
+	var out BalanceResponse
+	if err := c.doRequest(ctx, http.MethodGet, "/v1/balance", nil, &out, func(req *http.Request) {
+		req.Header.Set("X-Api-Key", kami)
+	}); err != nil {
 		return 0, err
 	}
-	if out.KamiNum == nil {
-		if strings.TrimSpace(out.Result) != "" {
-			return 0, fmt.Errorf("checkdx verify failed: %s", out.Result)
+	if !out.OK {
+		if strings.TrimSpace(out.Error) != "" {
+			return 0, fmt.Errorf("checkdx verify failed: %s", out.Error)
 		}
 		return 0, fmt.Errorf("checkdx verify failed: invalid response")
 	}
-	return *out.KamiNum, nil
+	balance, err := strconv.ParseFloat(strings.TrimSpace(out.Balance), 64)
+	if err != nil {
+		return 0, fmt.Errorf("checkdx verify: invalid balance %q", out.Balance)
+	}
+	return balance, nil
 }
 
-// GetPostResponse 可用接口列表。
-type GetPostResponse struct {
-	InterfaceOptions []struct {
-		Label string `json:"label"`
-		Value string `json:"value"`
-	} `json:"interfaceOptions"`
+// SubmitResponse 提交测活任务的响应。
+type SubmitResponse struct {
+	OK      bool     `json:"ok"`
+	TaskID  string   `json:"task_id"`
+	Total   int      `json:"total"`
+	Balance string   `json:"balance"`
+	Invalid []string `json:"invalid"`
+	Error   string   `json:"error"`
 }
 
-// ListInterfaces 获取当前可用的测活接口（站点）。
-func (c *Client) ListInterfaces(ctx context.Context) ([]InterfaceOption, error) {
-	var out GetPostResponse
-	if err := c.get(ctx, "/api/get_post", &out); err != nil {
+// submitRequest 提交测活任务的请求体。
+type submitRequest struct {
+	APIKey      string   `json:"api_key"`
+	Interface   string   `json:"interface"`
+	Cards       []string `json:"cards"`
+	ClientToken string   `json:"client_token,omitempty"`
+}
+
+// submit 发起批量测活任务并返回 task_id。
+func (c *Client) submit(ctx context.Context, kami, interfaceID string, lines []string) (string, error) {
+	req := submitRequest{APIKey: kami, Interface: interfaceID, Cards: lines}
+	var out SubmitResponse
+	if err := c.post(ctx, "/v1/submit", req, &out); err != nil {
+		return "", err
+	}
+	if !out.OK {
+		detail := strings.TrimSpace(out.Error)
+		if len(out.Invalid) > 0 {
+			detail += " invalid=[" + strings.Join(out.Invalid, ", ") + "]"
+		}
+		if detail == "" {
+			detail = "unknown"
+		}
+		return "", fmt.Errorf("checkdx submit rejected: %s", detail)
+	}
+	return strings.TrimSpace(out.TaskID), nil
+}
+
+// ResultItem 单卡检测结果条目（来自 /v1/result）。
+type ResultItem struct {
+	Card    string `json:"card"`
+	Verdict string `json:"verdict"`
+	Raw     string `json:"raw"`
+	Time    string `json:"time"`
+}
+
+// ResultResponse 轮询 /v1/result 的响应。
+type ResultResponse struct {
+	OK         bool         `json:"ok"`
+	Status     string       `json:"status"` // running | done
+	Total      int          `json:"total"`
+	Done       int          `json:"done"`
+	NextOffset int          `json:"next_offset"`
+	Truncated  bool         `json:"truncated"`
+	Results    []ResultItem `json:"results"`
+	Error      string       `json:"error"`
+}
+
+// fetchResults 拉取任务结果。
+func (c *Client) fetchResults(ctx context.Context, kami, taskID string, offset int) (*ResultResponse, error) {
+	path := "/v1/result?task_id=" + url.QueryEscape(taskID)
+	if offset > 0 {
+		path += "&offset=" + strconv.Itoa(offset)
+	}
+	var out ResultResponse
+	if err := c.doRequest(ctx, http.MethodGet, path, nil, &out, func(req *http.Request) {
+		req.Header.Set("X-Api-Key", kami)
+	}); err != nil {
 		return nil, err
 	}
-	options := make([]InterfaceOption, 0, len(out.InterfaceOptions))
-	for _, item := range out.InterfaceOptions {
-		options = append(options, InterfaceOption{Label: item.Label, Value: item.Value})
+	if !out.OK {
+		if strings.TrimSpace(out.Error) != "" {
+			return nil, fmt.Errorf("checkdx result failed: %s", out.Error)
+		}
+		return nil, fmt.Errorf("checkdx result failed: invalid response")
 	}
-	return options, nil
+	return &out, nil
 }
 
-// getCardRequest 发起批量测活的请求体。
-type getCardRequest struct {
-	CardNumbers       string `json:"cardNumbers"`
-	SelectedInterface string `json:"selectedInterface"`
-	UUID              string `json:"UUID"`
-	Kami              string `json:"kami"`
-	Len               int    `json:"len"`
-	SelectedCountry   string `json:"selectedCountry"`
-	FrontendVersion   string `json:"frontend_version"`
+// CancelResponse 结束任务的响应。
+type CancelResponse struct {
+	OK      bool   `json:"ok"`
+	Status  string `json:"status"`
+	Done    int    `json:"done"`
+	Total   int    `json:"total"`
+	Message string `json:"message"`
+	Error   string `json:"error"`
 }
 
-type getCardResponse struct {
-	Text    string   `json:"text"`
-	Dianshu *float64 `json:"dianshu"`
-}
-
-// startCheck 发起批量测活任务。
-func (c *Client) startCheck(ctx context.Context, kami, interfaceID, country string, cards []Card, taskID string) error {
-	lines := make([]string, 0, len(cards))
-	for _, card := range cards {
-		lines = append(lines, card.Format())
-	}
-	body := getCardRequest{
-		CardNumbers:       strings.Join(lines, "@@@@"),
-		SelectedInterface: interfaceID,
-		UUID:              taskID,
-		Kami:              kami,
-		Len:               len(cards),
-		SelectedCountry:   country,
-		FrontendVersion:   DefaultFrontendVersion,
-	}
-	var out getCardResponse
-	if err := c.post(ctx, "/api/get_card", body, &out); err != nil {
-		return err
-	}
-	if strings.TrimSpace(out.Text) != "ok" {
-		return fmt.Errorf("checkdx get_card rejected: %s", strings.TrimSpace(out.Text))
-	}
-	return nil
-}
-
-type historyResponse struct {
-	Results []struct {
-		Status string `json:"status"`
-	} `json:"results"`
-}
-
-// fetchHistory 拉取某任务已产出的检测结果。
-func (c *Client) fetchHistory(ctx context.Context, kami, taskID string) ([]string, error) {
-	var out historyResponse
-	if err := c.post(ctx, "/api/history/by_uuid", map[string]interface{}{"uuid": taskID, "kami": kami}, &out); err != nil {
-		return nil, err
-	}
-	lines := make([]string, 0, len(out.Results))
-	for _, item := range out.Results {
-		lines = append(lines, strings.TrimSpace(item.Status))
-	}
-	return lines, nil
-}
-
-type stopTaskResponse struct {
-	RefundedCount  string `json:"_退回条数"`
-	UpdatedBalance string `json:"_更新后"`
-	CompletedCount string `json:"_实际已完成"`
-	Text           string `json:"text"`
-}
-
-// stopTask 结束任务并退回未检测卡片的点数。
-func (c *Client) stopTask(ctx context.Context, kami, taskID string) {
+// cancelTask 结束任务，未检测到的卡片自动退点。
+func (c *Client) cancelTask(ctx context.Context, kami, taskID string) {
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	var out stopTaskResponse
-	if err := c.post(reqCtx, "/api/xiaofei", map[string]interface{}{
-		"uuid":   taskID,
-		"status": "结束",
-		"kami":   kami,
+	var out CancelResponse
+	if err := c.post(reqCtx, "/v1/cancel", map[string]interface{}{
+		"api_key": kami,
+		"task_id": taskID,
 	}, &out); err != nil {
-		logger.Warnw("checkdx_stop_task_failed", "task_id", taskID, "error", err)
+		logger.Warnw("checkdx_cancel_task_failed", "task_id", taskID, "error", err)
 		return
 	}
-	logger.Infow("checkdx_task_stopped",
+	logger.Infow("checkdx_task_cancelled",
 		"task_id", taskID,
-		"refunded", out.RefundedCount,
-		"completed", out.CompletedCount,
-		"balance", out.UpdatedBalance,
+		"done", out.Done,
+		"total", out.Total,
+		"message", out.Message,
 	)
 }
 
-// doRequest 执行 JSON 请求并解码响应。
-func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}, out interface{}) error {
+// doRequest 执行 JSON 请求并解码响应。header 在发送前可选注入。
+func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}, out interface{}, header func(*http.Request)) error {
 	var reader io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -201,6 +216,9 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if header != nil {
+		header(req)
 	}
 
 	resp, err := c.http.Do(req)
@@ -225,11 +243,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 }
 
 func (c *Client) post(ctx context.Context, path string, body interface{}, out interface{}) error {
-	return c.doRequest(ctx, http.MethodPost, path, body, out)
-}
-
-func (c *Client) get(ctx context.Context, path string, out interface{}) error {
-	return c.doRequest(ctx, http.MethodGet, path, nil, out)
+	return c.doRequest(ctx, http.MethodPost, path, body, out, nil)
 }
 
 func truncate(raw []byte, max int) string {

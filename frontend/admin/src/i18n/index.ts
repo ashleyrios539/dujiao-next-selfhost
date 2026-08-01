@@ -2778,17 +2778,10 @@ const messages = {
           },
           interface: {
             title: '检测接口（站点）',
-            subtitle: 'CheckDx 用于检测的接口。值需在 CheckDx 网页端「设置/接口」中查看，维护中的接口不可用。',
+            subtitle: 'CheckDx 用于检测的接口短名。可在 CheckDx 网页端「设置/接口」查看，维护中的接口不可用。',
             label: '接口值',
-            placeholder: '例如 post5（1.0pt）【✅ Open|开放中】_global',
-            hint: '接口维护或变更后需同步更新此值，否则检测会失败。',
-          },
-          country: {
-            title: '卡片发行国家',
-            subtitle: '按卡片的发行国家选择检测地区，默认美国。',
-            label: '国家',
-            placeholder: '美国',
-            hint: '大多数礼品卡选择「美国」即可。',
+            placeholder: '例如 post5',
+            hint: '值为 post1~post6 等短名；接口维护或变更后需同步更新此值，否则检测会失败。',
           },
           buffer: {
             title: '检测缓冲数量',
@@ -7185,17 +7178,10 @@ const messages = {
           },
           interface: {
             title: '檢測介面（站點）',
-            subtitle: 'CheckDx 用於檢測的介面。值需在 CheckDx 網頁端「設定/介面」中查看，維護中的介面不可用。',
+            subtitle: 'CheckDx 用於檢測的介面短名。可在 CheckDx 網頁端「設定/介面」查看，維護中的介面不可用。',
             label: '介面值',
-            placeholder: '例如 post5（1.0pt）【✅ Open|開放中】_global',
-            hint: '介面維護或變更後需同步更新此值，否則檢測會失敗。',
-          },
-          country: {
-            title: '卡片發行國家',
-            subtitle: '按卡片的發行國家選擇檢測地區，預設美國。',
-            label: '國家',
-            placeholder: '美國',
-            hint: '大多數禮品卡選擇「美國」即可。',
+            placeholder: '例如 post5',
+            hint: '值為 post1~post6 等短名；介面維護或變更後需同步更新此值，否則檢測會失敗。',
           },
           buffer: {
             title: '檢測緩衝數量',
@@ -11592,17 +11578,10 @@ const messages = {
           },
           interface: {
             title: 'Check Interface (Site)',
-            subtitle: 'The CheckDx interface used for checking. Find the value in the CheckDx web console under Settings/Interfaces; interfaces under maintenance are unusable.',
+            subtitle: 'Short name of the CheckDx interface used for checking. Find it in the CheckDx web console under Settings/Interfaces; interfaces under maintenance are unusable.',
             label: 'Interface value',
-            placeholder: 'e.g. post5（1.0pt）【✅ Open|开放中】_global',
-            hint: 'Update this value whenever the interface changes or goes into maintenance.',
-          },
-          country: {
-            title: 'Card Issuing Country',
-            subtitle: 'Select the region based on the card issuing country. Defaults to United States.',
-            label: 'Country',
-            placeholder: 'United States',
-            hint: 'United States works for most gift cards.',
+            placeholder: 'e.g. post5',
+            hint: 'Use short names such as post1-post6; update this value whenever the interface changes or goes into maintenance.',
           },
           buffer: {
             title: 'Check Buffer Count',

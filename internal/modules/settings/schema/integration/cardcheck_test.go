@@ -17,8 +17,7 @@ func TestCardCheckCodecPreservesDefaultsAndBounds(t *testing.T) {
 	decoded := DecodeCardCheckConfig(jsonmap.JSON{
 		constants.SettingFieldCardCheckEnabled:    true,
 		constants.SettingFieldCardCheckKami:       " CheckDx-test-kami ",
-		constants.SettingFieldCardCheckInterface:  "post5（1.0pt）【✅ Open|开放中】_global",
-		constants.SettingFieldCardCheckCountry:    "",
+		constants.SettingFieldCardCheckInterface:  "post5",
 		constants.SettingFieldCardCheckBuffer:     float64(99),
 		constants.SettingFieldCardCheckTimeout:    "360",
 		constants.SettingFieldCardCheckPollMillis: 100,
@@ -27,8 +26,8 @@ func TestCardCheckCodecPreservesDefaultsAndBounds(t *testing.T) {
 	if !decoded.Enabled || decoded.Kami != "CheckDx-test-kami" {
 		t.Fatalf("card check boolean/string decode mismatch: %#v", decoded)
 	}
-	if decoded.Interface == "" || decoded.Country != "美国" {
-		t.Fatalf("card check interface/country mismatch: %#v", decoded)
+	if decoded.Interface != "post5" {
+		t.Fatalf("card check interface decode mismatch: %#v", decoded)
 	}
 	if decoded.Buffer != 99 || decoded.TimeoutSeconds != 300 || decoded.PollMillis != 2000 {
 		t.Fatalf("card check bounds mismatch: %#v", decoded)
@@ -49,15 +48,11 @@ func TestCardCheckJSONNormalizerRestoresDefaults(t *testing.T) {
 	normalized := NormalizeCardCheckConfigJSON(jsonmap.JSON{
 		constants.SettingFieldCardCheckBuffer:     -1,
 		constants.SettingFieldCardCheckTimeout:    1,
-		constants.SettingFieldCardCheckCountry:    "",
 	})
 	if normalized[constants.SettingFieldCardCheckBuffer] != 5 {
 		t.Fatalf("card check buffer normalizer mismatch: %#v", normalized)
 	}
 	if normalized[constants.SettingFieldCardCheckTimeout] != 60 {
 		t.Fatalf("card check timeout normalizer mismatch: %#v", normalized)
-	}
-	if normalized[constants.SettingFieldCardCheckCountry] != "美国" {
-		t.Fatalf("card check country normalizer mismatch: %#v", normalized)
 	}
 }

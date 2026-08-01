@@ -103,24 +103,67 @@ func TestParseCard(t *testing.T) {
 
 func TestCardFormat(t *testing.T) {
 	card := Card{Number: "4111111111111111", Month: "09", Year: "2026", CVV: "123"}
-	if got := card.Format(); got != "4111111111111111|09|2026|123" {
+	if got := card.Format(); got != "4111111111111111|09|26|123" {
 		t.Fatalf("Format() = %q", got)
 	}
 }
 
-func TestParseStatus(t *testing.T) {
+func TestParseVerdict(t *testing.T) {
 	tests := []struct {
-		line string
-		want Status
+		verdict string
+		want    Status
 	}{
-		{"Live CheckDx => 4111111111111111 | 余额 100.00 USD", StatusLive},
-		{"Dead 4111111111111111", StatusDead},
-		{"Unknown 4111111111111111", StatusUnknown},
-		{"maintenance 备注：接口维护中", ""},
+		{"Live", StatusLive},
+		{"live", StatusLive},
+		{"Dead", StatusDead},
+		{"Unknown", StatusUnknown},
+		{"", ""},
+		{"maintenance", ""},
 	}
 	for _, test := range tests {
-		if got := parseStatus(test.line); got != test.want {
-			t.Fatalf("parseStatus(%q) = %q, want %q", test.line, got, test.want)
+		if got := parseVerdict(test.verdict); got != test.want {
+			t.Fatalf("parseVerdict(%q) = %q, want %q", test.verdict, got, test.want)
 		}
+	}
+}
+
+func TestMatchResults(t *testing.T) {
+	cards := []Card{
+		{Number: "4111111111111111", Month: "09", Year: "2026", CVV: "123"},
+		{Number: "5500000000000004", Month: "11", Year: "2029", CVV: "456"},
+		{Number: "371449635398431", Month: "01", Year: "2027", CVV: "1234"},
+	}
+
+	// 完整卡号 + 掩码（前4后4）+ 未匹配兜底顺序。
+	items := []ResultItem{
+		{Card: "5500000000000004", Verdict: "Dead", Raw: "x"},
+		{Card: "4111****1111", Verdict: "Live", Raw: "y"},
+		{Card: "junk", Verdict: "Unknown", Raw: "z"},
+	}
+	got := matchResults(items, cards)
+	want := []Result{
+		{Card: cards[0], Status: StatusLive, Raw: "y"},
+		{Card: cards[1], Status: StatusDead, Raw: "x"},
+		{Card: cards[2], Status: StatusUnknown, Raw: "z"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("matchResults len = %d, want %d: %+v", len(got), len(want), got)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("matchResults[%d] = %+v, want %+v", index, got[index], want[index])
+		}
+	}
+}
+
+func TestMergeItemsDeduplicates(t *testing.T) {
+	current := []ResultItem{{Card: "4111****1111", Verdict: "Live"}}
+	incoming := []ResultItem{
+		{Card: "4111****1111", Verdict: "Live"},
+		{Card: "5500****0004", Verdict: "Dead"},
+	}
+	got := mergeItems(current, incoming)
+	if len(got) != 2 {
+		t.Fatalf("mergeItems len = %d, want 2: %+v", len(got), got)
 	}
 }

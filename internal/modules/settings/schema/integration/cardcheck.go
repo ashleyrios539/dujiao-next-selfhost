@@ -18,7 +18,6 @@ const (
 	cardCheckPollMillisDef    = 2000
 	cardCheckPollMillisMin    = 500
 	cardCheckPollMillisMax    = 10000
-	cardCheckCountryDefault   = "美国"
 	cardCheckInterfaceDefault = ""
 )
 
@@ -27,7 +26,6 @@ type CardCheckConfig struct {
 	Enabled        bool   `json:"enabled"`
 	Kami           string `json:"kami"`
 	Interface      string `json:"interface"`
-	Country        string `json:"country"`
 	Buffer         int    `json:"buffer"`
 	TimeoutSeconds int    `json:"timeout_seconds"`
 	PollMillis     int    `json:"poll_interval_millis"`
@@ -39,7 +37,6 @@ func DefaultCardCheckConfig() CardCheckConfig {
 		Enabled:        false,
 		Kami:           "",
 		Interface:      cardCheckInterfaceDefault,
-		Country:        cardCheckCountryDefault,
 		Buffer:         cardCheckBufferDefault,
 		TimeoutSeconds: cardCheckTimeoutDef,
 		PollMillis:     cardCheckPollMillisDef,
@@ -50,10 +47,6 @@ func DefaultCardCheckConfig() CardCheckConfig {
 func NormalizeCardCheckConfig(config CardCheckConfig) CardCheckConfig {
 	config.Kami = strings.TrimSpace(config.Kami)
 	config.Interface = strings.TrimSpace(config.Interface)
-	config.Country = strings.TrimSpace(config.Country)
-	if config.Country == "" {
-		config.Country = cardCheckCountryDefault
-	}
 	if config.Buffer < cardCheckBufferMin {
 		config.Buffer = cardCheckBufferDefault
 	}
@@ -87,9 +80,6 @@ func DecodeCardCheckConfig(raw jsonmap.JSON, fallback CardCheckConfig) CardCheck
 	if text, ok := raw[constants.SettingFieldCardCheckInterface].(string); ok {
 		result.Interface = text
 	}
-	if text, ok := raw[constants.SettingFieldCardCheckCountry].(string); ok {
-		result.Country = text
-	}
 	if parsed, err := settingsvalue.ParseInt(raw[constants.SettingFieldCardCheckBuffer]); err == nil {
 		result.Buffer = parsed
 	}
@@ -109,7 +99,6 @@ func EncodeCardCheckConfig(config CardCheckConfig) jsonmap.JSON {
 		constants.SettingFieldCardCheckEnabled:    normalized.Enabled,
 		constants.SettingFieldCardCheckKami:       normalized.Kami,
 		constants.SettingFieldCardCheckInterface:  normalized.Interface,
-		constants.SettingFieldCardCheckCountry:    normalized.Country,
 		constants.SettingFieldCardCheckBuffer:     normalized.Buffer,
 		constants.SettingFieldCardCheckTimeout:    normalized.TimeoutSeconds,
 		constants.SettingFieldCardCheckPollMillis: normalized.PollMillis,
