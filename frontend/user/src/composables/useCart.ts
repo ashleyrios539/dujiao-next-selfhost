@@ -31,13 +31,26 @@ export function useCart() {
 
   const totalAmount = computed(() => {
     const totalCents = cartItems.value.reduce((sum, item) => {
-      const amountCents = amountToCents(item.priceAmount)
+      const amountCents = amountToCents(itemUnitPrice(item))
       const qty = parseInteger(item.quantity)
       if (amountCents === null || qty === null) return sum
       return sum + amountCents * qty
     }, 0)
     return centsToAmount(totalCents)
   })
+
+  const itemUnitPrice = (item: CartItem) => {
+    const baseCents = amountToCents(item.priceAmount)
+    if (baseCents === null) return '0.00'
+    let cents = baseCents
+    if (item.cardCheckEnabled) {
+      const feeCents = amountToCents(item.cardCheckFee)
+      if (feeCents !== null) cents += feeCents
+    }
+    const pickCents = amountToCents(String(item.pickSurcharge ?? 0))
+    if (pickCents !== null) cents += pickCents
+    return centsToAmount(cents)
+  }
 
   const removeWithUndo = (item: CartItem) => {
     const removedItem = { ...item }
@@ -54,7 +67,7 @@ export function useCart() {
   }
 
   const itemSubtotal = (item: CartItem) => {
-    const amountCents = amountToCents(item.priceAmount)
+    const amountCents = amountToCents(itemUnitPrice(item))
     const qty = parseInteger(item.quantity)
     if (amountCents === null || qty === null) {
       return formatPrice('-', totalCurrency.value)
@@ -202,6 +215,7 @@ export function useCart() {
     cartItemKey,
     cartItemImage,
     itemSkuDisplay,
+    itemUnitPrice,
     itemSubtotal,
     itemStockHint,
     quantityWarning,

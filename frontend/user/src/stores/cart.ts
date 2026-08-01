@@ -33,6 +33,7 @@ export interface CartItem {
     paymentChannelIds?: number[]
     cardCheckEnabled?: boolean
     cardCheckFee?: string
+    pickSurcharge?: number
     pickCountry?: string
     pickBrands?: string[]
     pickCardTypes?: string[]
@@ -67,6 +68,13 @@ const normalizeOptionalString = (value: unknown): string | undefined => {
     if (value === undefined || value === null) return undefined
     const text = String(value).trim()
     return text || undefined
+}
+
+const normalizeOptionalNumber = (value: unknown): number | undefined => {
+    if (value === undefined || value === null || value === '') return undefined
+    const numberValue = Number(value)
+    if (!Number.isFinite(numberValue)) return undefined
+    return numberValue
 }
 
 const normalizeOptionalLimitNumber = (value: unknown): number | undefined => {
@@ -120,6 +128,7 @@ const loadCartItems = (): CartItem[] => {
                     skuStockSnapshotAt: normalizeOptionalString(row.skuStockSnapshotAt ?? row.sku_stock_snapshot_at),
                     cardCheckEnabled: normalizeOptionalBoolean(row.cardCheckEnabled ?? row.card_check_enabled),
                     cardCheckFee: normalizeOptionalString(row.cardCheckFee ?? row.card_check_fee),
+                    pickSurcharge: normalizeOptionalNumber(row.pickSurcharge ?? row.pick_surcharge),
                     pickCountry: normalizeOptionalString(row.pickCountry ?? row.pick_country),
                     pickBrands: Array.isArray(row.pickBrands ?? row.pick_brands) ? (row.pickBrands ?? row.pick_brands).map((v: unknown) => String(v).trim()).filter(Boolean) : undefined,
                     pickCardTypes: Array.isArray(row.pickCardTypes ?? row.pick_card_types) ? (row.pickCardTypes ?? row.pick_card_types).map((v: unknown) => String(v).trim()).filter(Boolean) : undefined,
@@ -164,6 +173,7 @@ export const useCartStore = defineStore('cart', () => {
             skuStockSnapshotAt: normalizeOptionalString(item.skuStockSnapshotAt) || new Date().toISOString(),
             cardCheckEnabled: normalizeOptionalBoolean(item.cardCheckEnabled),
             cardCheckFee: normalizeOptionalString(item.cardCheckFee),
+            pickSurcharge: normalizeOptionalNumber(item.pickSurcharge),
             pickCountry: normalizeOptionalString(item.pickCountry),
             pickBrands: Array.isArray(item.pickBrands) ? item.pickBrands.map((v) => String(v).trim()).filter(Boolean) : undefined,
             pickCardTypes: Array.isArray(item.pickCardTypes) ? item.pickCardTypes.map((v) => String(v).trim()).filter(Boolean) : undefined,

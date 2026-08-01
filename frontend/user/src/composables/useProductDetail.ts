@@ -468,6 +468,7 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     paymentChannelIds: Array.isArray(product.value.payment_channel_ids) && product.value.payment_channel_ids.length > 0 ? product.value.payment_channel_ids : undefined,
     cardCheckEnabled: cardCheckEnabled.value,
     cardCheckFee: String(product.value?.card_check_fee || '0'),
+    pickSurcharge: pickEnabled.value ? pickUnitSurcharge.value : 0,
     pickCountry: pickEnabled.value ? pickCountry.value : '',
     pickBrands: pickEnabled.value ? pickBrands.value : [],
     pickCardTypes: pickEnabled.value ? pickCardTypes.value : [],
