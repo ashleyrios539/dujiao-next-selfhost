@@ -80,6 +80,13 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
   const pickCountries = ref<any[]>([])
   const pickStockLoading = ref(false)
 
+  const pickMode = ref<'random' | 'bin' | 'type' | ''>('')
+  const pickBin = ref('')
+  const binStockCount = ref<number | null>(null)
+  const binStockLoading = ref(false)
+  const countrySearch = ref('')
+  const countryDropdownOpen = ref(false)
+
   const pickBrandOptions = [
     { value: 'visa', label: 'Visa' },
     { value: 'mastercard', label: 'Mastercard' },
@@ -344,8 +351,17 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     if (product.value.stock_status === 'out_of_stock') return false
     if (selectedSku.value && !isSkuPurchasable(selectedSku.value)) return false
     if (stockBelowMinPurchase.value) return false
-    if (pickEnabled.value && !pickCountry.value) return false
-    if (pickEnabled.value && pickAvailableCount.value < quantity.value) return false
+    if (pickEnabled.value) {
+      if (!pickMode.value) return false
+      if (pickMode.value === 'bin') {
+        if (!/^\d{6}$/.test(pickBin.value)) return false
+        if (binStockCount.value !== null && binStockCount.value < quantity.value) return false
+      } else {
+        if (!pickCountry.value) return false
+        if (pickMode.value === 'type' && pickBrands.value.length === 0 && pickCardTypes.value.length === 0) return false
+        if (pickAvailableCount.value < quantity.value) return false
+      }
+    }
     return true
   })
   const cannotPurchaseReason = computed(() => {
@@ -353,8 +369,17 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     if (requiresLogin.value) return ''
     if (requiresSKUSelection.value) return t('productDetail.skuRequired')
     if (stockBelowMinPurchase.value) return t('productDetail.stockBelowMinPurchase', { count: quantityEffectiveMin.value })
-    if (pickEnabled.value && !pickCountry.value) return t('productDetail.pickCountryRequired')
-    if (pickEnabled.value && pickAvailableCount.value < quantity.value) return t('productDetail.pickStockInsufficient', { count: pickAvailableCount.value })
+    if (pickEnabled.value) {
+      if (!pickMode.value) return t('productDetail.pickModeRequired')
+      if (pickMode.value === 'bin') {
+        if (!/^\d{6}$/.test(pickBin.value)) return t('productDetail.pickBinHint')
+        if (binStockCount.value !== null && binStockCount.value < quantity.value) return t('productDetail.pickStockInsufficient', { count: binStockCount.value })
+      } else {
+        if (!pickCountry.value) return t('productDetail.pickCountryRequired')
+        if (pickMode.value === 'type' && pickBrands.value.length === 0 && pickCardTypes.value.length === 0) return t('productDetail.pickTypeRequired')
+        if (pickAvailableCount.value < quantity.value) return t('productDetail.pickStockInsufficient', { count: pickAvailableCount.value })
+      }
+    }
     if (canPurchase.value) return ''
     return t('productDetail.stockUnavailable')
   })
@@ -446,6 +471,7 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     pickCountry: pickEnabled.value ? pickCountry.value : '',
     pickBrands: pickEnabled.value ? pickBrands.value : [],
     pickCardTypes: pickEnabled.value ? pickCardTypes.value : [],
+    pickBin: pickEnabled.value ? pickBin.value : '',
     quantity: quantity.value,
   })
 
@@ -781,26 +807,96 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
   }
 
   const pickSelectionSummary = computed(() => {
-    if (!pickCountry.value) return ''
+    if (!pickCountry.value && !pickBin.value) return ''
     const parts: string[] = []
-    const country = availableCountries.value.find((c) => String(c.code) === pickCountry.value)
-    parts.push(country ? `${country.name} ${country.code}` : pickCountry.value)
-    if (pickBrands.value.length) {
-      const labels = pickBrands.value.map((b) => pickBrandOptions.find((o) => o.value === b)?.label || b)
-      parts.push(labels.join('、'))
-    }
-    if (pickCardTypes.value.length) {
-      const labels = pickCardTypes.value.map((ty) => pickTypeOptions.find((o) => o.value === ty)?.label || ty)
-      parts.push(labels.join('、'))
+    if (pickBin.value) {
+      parts.push(`BIN ${pickBin.value}`)
+    } else {
+      const country = availableCountries.value.find((c) => String(c.code) === pickCountry.value)
+      parts.push(country ? `${country.name} ${country.code}` : pickCountry.value)
+      if (pickBrands.value.length) {
+        const labels = pickBrands.value.map((b) => pickBrandOptions.find((o) => o.value === b)?.label || b)
+        parts.push(labels.join('、'))
+      }
+      if (pickCardTypes.value.length) {
+        const labels = pickCardTypes.value.map((ty) => pickTypeOptions.find((o) => o.value === ty)?.label || ty)
+        parts.push(labels.join('、'))
+      }
     }
     return parts.join(' · ')
   })
 
+  const selectPickMode = (mode: 'random' | 'bin' | 'type') => {
+    if (pickMode.value === mode) return
+    pickMode.value = mode
+    pickCountry.value = ''
+    pickBrands.value = []
+    pickCardTypes.value = []
+    pickBin.value = ''
+    binStockCount.value = null
+    countrySearch.value = ''
+  }
+
+  const selectCountry = (code: string) => {
+    pickCountry.value = code
+    countrySearch.value = ''
+    countryDropdownOpen.value = false
+  }
+
+  const onCountryBlur = () => {
+    setTimeout(() => { countryDropdownOpen.value = false }, 150)
+  }
+
+  const filteredCountries = computed(() => {
+    if (!countrySearch.value.trim()) return availableCountries.value
+    const q = countrySearch.value.trim().toLowerCase()
+    return availableCountries.value.filter((c: any) =>
+      String(c.code).toLowerCase().includes(q) || String(c.name).toLowerCase().includes(q),
+    )
+  })
+
+  const selectedCountryName = computed(() => {
+    const c = availableCountries.value.find((c: any) => String(c.code) === pickCountry.value)
+    return c ? `${c.name} ${c.code}` : ''
+  })
+
+  let binDebounceTimer: ReturnType<typeof setTimeout> | null = null
+  const checkBinStock = async () => {
+    if (binDebounceTimer) clearTimeout(binDebounceTimer)
+    if (!pickEnabled.value || pickBin.value.length !== 6 || !/^\d{6}$/.test(pickBin.value)) {
+      binStockCount.value = null
+      return
+    }
+    binDebounceTimer = setTimeout(async () => {
+      binStockLoading.value = true
+      try {
+        const response = await productAPI.pickStock(product.value.slug, pickBin.value)
+        binStockCount.value = Number(response.data.data?.bin_total ?? 0)
+      } catch {
+        binStockCount.value = 0
+      } finally {
+        binStockLoading.value = false
+      }
+    }, 400)
+  }
+
+  watch(pickBin, () => {
+    if (pickBin.value && !/^\d*$/.test(pickBin.value)) {
+      pickBin.value = pickBin.value.replace(/\D/g, '').slice(0, 6)
+    }
+    if (pickMode.value === 'bin') checkBinStock()
+  })
+
   const resetPickSelection = () => {
+    pickMode.value = ''
     pickCountry.value = ''
     pickHeadEnabled.value = false
     pickBrands.value = []
     pickCardTypes.value = []
+    pickBin.value = ''
+    binStockCount.value = null
+    countrySearch.value = ''
+    countryDropdownOpen.value = false
   }
 
   onUnmounted(() => {
@@ -824,6 +920,8 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     // 挑卡
     pickEnabled, pickCountry, pickHeadEnabled, pickBrands, pickCardTypes, pickStockLoading,
     pickBrandOptions, pickTypeOptions, togglePickBrand, togglePickType, pickSelectionSummary,
+    pickMode, pickBin, binStockCount, binStockLoading, selectPickMode,
+    countrySearch, countryDropdownOpen, selectCountry, onCountryBlur, filteredCountries, selectedCountryName,
     availableCountries, pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
     resetPickSelection,
     // 价格计算

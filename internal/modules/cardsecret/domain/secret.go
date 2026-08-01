@@ -22,6 +22,7 @@ type Secret struct {
 	Country    string     `gorm:"column:country;type:varchar(2);default:'';index" json:"country"`               // 卡所属国家（两字母）
 	Brand      string     `gorm:"column:brand;type:varchar(16);default:'';index" json:"brand"`                  // 归一化挑卡品牌（visa/mastercard/discover/other）
 	CardType   string     `gorm:"column:card_type;type:varchar(8);default:'';index" json:"card_type"`           // 挑卡种类（D/PD/C）
+	BinPrefix  string     `gorm:"column:bin_prefix;type:varchar(6);default:'';index" json:"bin_prefix"`         // 卡号前6位（挑头过滤用）
 	OrderID    *uint      `gorm:"index" json:"order_id,omitempty"`                                              // 关联订单ID
 	ReservedAt *time.Time `gorm:"index" json:"reserved_at"`                                                     // 占用时间
 	UsedAt     *time.Time `gorm:"index" json:"used_at"`                                                         // 使用时间

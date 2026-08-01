@@ -155,8 +155,8 @@ func TestBuildOrderResultPickCountryRequiredWhenEnabled(t *testing.T) {
 			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickBrands: []string{"visa"}},
 		},
 	})
-	if err != ErrProductPickCountryRequired {
-		t.Fatalf("expected ErrProductPickCountryRequired, got %v", err)
+	if err != ErrProductPickModeRequired {
+		t.Fatalf("expected ErrProductPickModeRequired, got %v", err)
 	}
 }
 
@@ -245,5 +245,50 @@ func TestBuildOrderResultPickRejectedWhenProductUnsupported(t *testing.T) {
 	})
 	if err != ErrProductPickNotSupported {
 		t.Fatalf("expected ErrProductPickNotSupported, got %v", err)
+	}
+}
+
+func TestBuildOrderResultPickBinAccepted(t *testing.T) {
+	svc, product, sku := buildPickPricingOrderService(t)
+	result, err := svc.buildOrderResult(orderCreateParams{
+		UserID: 1,
+		Items: []CreateOrderItem{
+			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickBin: "414720"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected success, got %v", err)
+	}
+	if result.OrderItems[0].PickBin != "414720" {
+		t.Fatalf("expected pick_bin 414720, got %q", result.OrderItems[0].PickBin)
+	}
+	if result.OrderItems[0].PickCountry != "" {
+		t.Fatalf("expected empty pick_country for bin mode, got %q", result.OrderItems[0].PickCountry)
+	}
+}
+
+func TestBuildOrderResultPickBinInvalid(t *testing.T) {
+	svc, product, sku := buildPickPricingOrderService(t)
+	_, err := svc.buildOrderResult(orderCreateParams{
+		UserID: 1,
+		Items: []CreateOrderItem{
+			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickBin: "4147"},
+		},
+	})
+	if err != ErrProductPickBinInvalid {
+		t.Fatalf("expected ErrProductPickBinInvalid, got %v", err)
+	}
+}
+
+func TestBuildOrderResultPickBinConflictWithCountry(t *testing.T) {
+	svc, product, sku := buildPickPricingOrderService(t)
+	_, err := svc.buildOrderResult(orderCreateParams{
+		UserID: 1,
+		Items: []CreateOrderItem{
+			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickBin: "414720", PickCountry: "US"},
+		},
+	})
+	if err != ErrProductPickBinConflict {
+		t.Fatalf("expected ErrProductPickBinConflict, got %v", err)
 	}
 }

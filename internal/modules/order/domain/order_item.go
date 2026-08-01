@@ -31,9 +31,10 @@ type OrderItem struct {
 	PromotionName                string            `gorm:"-" json:"promotion_name,omitempty"`                                      // 活动价名称
 	FulfillmentType              string            `gorm:"not null" json:"fulfillment_type"`                                       // 交付类型
 	CardCheckEnabled             bool              `gorm:"not null;default:false" json:"card_check_enabled"`                       // 用户是否选择测活
-	PickCountry                  string            `gorm:"column:pick_country;type:varchar(2);default:''" json:"pick_country"`      // 挑卡国家（两字母）
+	PickCountry                  string            `gorm:"column:pick_country;type:varchar(2);default:''" json:"pick_country"`       // 挑卡国家（两字母）
 	PickBrands                   jsonslice.Strings `gorm:"type:json" json:"pick_brands"`                                            // 挑卡品牌快照
 	PickCardTypes                jsonslice.Strings `gorm:"type:json" json:"pick_card_types"`                                        // 挑卡种类快照
+	PickBin                      string            `gorm:"column:pick_bin;type:varchar(6);default:''" json:"pick_bin"`            // 挑头 BIN（6位）
 	ManualFormSchemaSnapshotJSON jsonmap.JSON      `gorm:"type:json" json:"manual_form_schema_snapshot"`                           // 人工交付表单 schema 快照
 	ManualFormSubmissionJSON     jsonmap.JSON      `gorm:"type:json" json:"manual_form_submission"`                                // 人工交付表单提交值
 	InstructionsJSON             jsonmap.JSON      `gorm:"type:json" json:"instructions"`                                          // 交付后使用说明快照（多语言）

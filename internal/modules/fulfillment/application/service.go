@@ -314,6 +314,7 @@ func (s *Service) CreateAuto(orderID uint) (*fulfillmentdomain.Fulfillment, erro
 						Country:   item.PickCountry,
 						Brands:    item.PickBrands,
 						CardTypes: item.PickCardTypes,
+						BinPrefix: item.PickBin,
 					}
 					var availableRows []cardsecretdomain.Secret
 					var err error

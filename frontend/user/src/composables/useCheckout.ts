@@ -657,6 +657,7 @@ export function useCheckout() {
     pick_country: item.pickCountry || undefined,
     pick_brands: Array.isArray(item.pickBrands) && item.pickBrands.length ? item.pickBrands : undefined,
     pick_card_types: Array.isArray(item.pickCardTypes) && item.pickCardTypes.length ? item.pickCardTypes : undefined,
+    pick_bin: item.pickBin || undefined,
   }))
 
   const buildOrderPayload = () => ({

@@ -56,6 +56,7 @@ func (s *Service) runCardCheck(ctx context.Context, order *orderdomain.Order, ch
 			Country:   item.PickCountry,
 			Brands:    item.PickBrands,
 			CardTypes: item.PickCardTypes,
+			BinPrefix: item.PickBin,
 		}
 		pool := newCardCheckPool(s.cardSecretStore, item.ProductID, item.SKUID, pickFilter, reservedByKey[key])
 		live, itemDead, checkErr := s.checkItemCard(ctx, item, pool, cfg, opts)

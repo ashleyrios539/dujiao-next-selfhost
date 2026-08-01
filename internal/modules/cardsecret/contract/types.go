@@ -15,16 +15,17 @@ type ListFilter struct {
 	PageSize  int
 }
 
-// PickFilter 描述挑卡选卡条件：国家必填，品牌/种类可多选（空 = 不限）。
+// PickFilter 描述挑卡选卡条件：挑头模式只需 BinPrefix，其余模式国家必填，品牌/种类可多选（空 = 不限）。
 type PickFilter struct {
 	Country   string
 	Brands    []string
 	CardTypes []string
+	BinPrefix string
 }
 
-// Empty 判断是否未启用挑卡（国家为空即视为无挑卡条件）。
+// Empty 判断是否未启用挑卡（无任何过滤条件即视为无挑卡条件）。
 func (f PickFilter) Empty() bool {
-	return f.Country == ""
+	return f.Country == "" && f.BinPrefix == "" && len(f.Brands) == 0 && len(f.CardTypes) == 0
 }
 
 // PickAttrCount 是按商品/SKU/国家/品牌/种类聚合的可用卡密数量。

@@ -226,6 +226,7 @@ func (s *Service) annotateCardSecrets(items []cardsecretdomain.Secret) {
 		byBin[row.BIN] = row
 	}
 	for _, target := range targets {
+		target.item.BinPrefix = target.bin
 		bin, found := byBin[target.bin]
 		if !found {
 			continue

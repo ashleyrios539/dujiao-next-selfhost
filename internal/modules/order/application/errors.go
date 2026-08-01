@@ -39,6 +39,9 @@ var (
 	ErrProductPickCountryInvalid  = errors.New("product pick country invalid")
 	ErrProductPickBrandInvalid    = errors.New("product pick brand invalid")
 	ErrProductPickTypeInvalid     = errors.New("product pick type invalid")
+	ErrProductPickBinInvalid      = errors.New("product pick bin invalid")
+	ErrProductPickModeRequired    = errors.New("product pick mode required")
+	ErrProductPickBinConflict     = errors.New("product pick bin conflict")
 	ErrQueueUnavailable           = errors.New("queue unavailable")
 	ErrResellerProductNotListed   = productcontract.ErrResellerProductNotListed
 	ErrResellerCouponNotAllowed   = errors.New("reseller coupon not allowed")

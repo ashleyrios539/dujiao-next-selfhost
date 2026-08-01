@@ -246,6 +246,9 @@ func (r *Store) buildPickQuery(productID, skuID uint, filter cardsecretcontract.
 	if len(filter.CardTypes) > 0 {
 		query = query.Where("card_type IN ?", filter.CardTypes)
 	}
+	if bin := strings.TrimSpace(filter.BinPrefix); bin != "" {
+		query = query.Where("bin_prefix = ?", bin)
+	}
 	return query
 }
 

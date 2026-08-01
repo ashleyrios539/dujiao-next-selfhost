@@ -36,6 +36,7 @@ export interface CartItem {
     pickCountry?: string
     pickBrands?: string[]
     pickCardTypes?: string[]
+    pickBin?: string
 }
 
 const normalizeSkuId = (value: unknown) => {
@@ -45,8 +46,8 @@ const normalizeSkuId = (value: unknown) => {
     return integerValue > 0 ? integerValue : 0
 }
 
-const cartIdentity = (item: Pick<CartItem, 'productId' | 'skuId' | 'cardCheckEnabled' | 'pickCountry' | 'pickBrands' | 'pickCardTypes'>) =>
-    `${item.productId}:${normalizeSkuId(item.skuId)}:${item.cardCheckEnabled ? 1 : 0}:${item.pickCountry || ''}:${(item.pickBrands || []).slice().sort().join(',')}:${(item.pickCardTypes || []).slice().sort().join(',')}`
+const cartIdentity = (item: Pick<CartItem, 'productId' | 'skuId' | 'cardCheckEnabled' | 'pickCountry' | 'pickBrands' | 'pickCardTypes' | 'pickBin'>) =>
+    `${item.productId}:${normalizeSkuId(item.skuId)}:${item.cardCheckEnabled ? 1 : 0}:${item.pickCountry || ''}:${(item.pickBrands || []).slice().sort().join(',')}:${(item.pickCardTypes || []).slice().sort().join(',')}:${item.pickBin || ''}`
 
 const normalizeOptionalStockNumber = (value: unknown, allowUnlimited = false): number | undefined => {
     if (value === undefined || value === null || value === '') return undefined
@@ -122,6 +123,7 @@ const loadCartItems = (): CartItem[] => {
                     pickCountry: normalizeOptionalString(row.pickCountry ?? row.pick_country),
                     pickBrands: Array.isArray(row.pickBrands ?? row.pick_brands) ? (row.pickBrands ?? row.pick_brands).map((v: unknown) => String(v).trim()).filter(Boolean) : undefined,
                     pickCardTypes: Array.isArray(row.pickCardTypes ?? row.pick_card_types) ? (row.pickCardTypes ?? row.pick_card_types).map((v: unknown) => String(v).trim()).filter(Boolean) : undefined,
+                    pickBin: normalizeOptionalString(row.pickBin ?? row.pick_bin),
                     minPurchaseQuantity: normalizeOptionalLimitNumber(row.minPurchaseQuantity ?? row.min_purchase_quantity),
                     maxPurchaseQuantity: normalizeOptionalLimitNumber(row.maxPurchaseQuantity ?? row.max_purchase_quantity),
                 } as CartItem
@@ -165,6 +167,7 @@ export const useCartStore = defineStore('cart', () => {
             pickCountry: normalizeOptionalString(item.pickCountry),
             pickBrands: Array.isArray(item.pickBrands) ? item.pickBrands.map((v) => String(v).trim()).filter(Boolean) : undefined,
             pickCardTypes: Array.isArray(item.pickCardTypes) ? item.pickCardTypes.map((v) => String(v).trim()).filter(Boolean) : undefined,
+            pickBin: normalizeOptionalString(item.pickBin),
             minPurchaseQuantity: normalizeOptionalLimitNumber(item.minPurchaseQuantity),
             maxPurchaseQuantity: normalizeOptionalLimitNumber(item.maxPurchaseQuantity),
         }
@@ -204,6 +207,7 @@ export const useCartStore = defineStore('cart', () => {
             existing.pickCountry = normalizedItem.pickCountry
             existing.pickBrands = normalizedItem.pickBrands
             existing.pickCardTypes = normalizedItem.pickCardTypes
+            existing.pickBin = normalizedItem.pickBin
         } else {
             items.value.push({
                 ...normalizedItem,

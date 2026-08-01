@@ -176,6 +176,7 @@ type CreateOrderItem struct {
 	PickCountry     string
 	PickBrands      []string
 	PickCardTypes   []string
+	PickBin         string
 }
 
 // childOrderPlan 子订单计划数据
@@ -326,6 +327,7 @@ type OrderPreviewItem struct {
 	PickCountry        string            `json:"pick_country"`
 	PickBrands         jsonslice.Strings `json:"pick_brands"`
 	PickCardTypes      jsonslice.Strings `json:"pick_card_types"`
+	PickBin            string            `json:"pick_bin"`
 }
 
 type orderBuildResult struct {
@@ -414,6 +416,7 @@ func (s *OrderService) previewOrder(input orderCreateParams) (*OrderPreview, err
 			PickCountry:        item.PickCountry,
 			PickBrands:         item.PickBrands,
 			PickCardTypes:      item.PickCardTypes,
+			PickBin:            item.PickBin,
 		})
 	}
 	return &OrderPreview{
@@ -612,17 +615,18 @@ func (s *OrderService) createOrder(input orderCreateParams) (*orderdomain.Order,
 				secretRepo := tx.CardSecrets()
 				var rows []cardsecretdomain.Secret
 				var err error
-				if plan.Item.PickCountry != "" {
-					rows, err = secretRepo.ListAvailableByProductFilteredForUpdate(
-						plan.Item.ProductID,
-						plan.Item.SKUID,
-						cardsecretcontract.PickFilter{
-							Country:   plan.Item.PickCountry,
-							Brands:    plan.Item.PickBrands,
-							CardTypes: plan.Item.PickCardTypes,
-						},
-						plan.Item.Quantity,
-					)
+			if plan.Item.PickCountry != "" || plan.Item.PickBin != "" {
+				rows, err = secretRepo.ListAvailableByProductFilteredForUpdate(
+					plan.Item.ProductID,
+					plan.Item.SKUID,
+					cardsecretcontract.PickFilter{
+						Country:   plan.Item.PickCountry,
+						Brands:    plan.Item.PickBrands,
+						CardTypes: plan.Item.PickCardTypes,
+						BinPrefix: plan.Item.PickBin,
+					},
+					plan.Item.Quantity,
+				)
 				} else {
 					rows, err = secretRepo.ListAvailableByProductForUpdate(plan.Item.ProductID, plan.Item.SKUID, plan.Item.Quantity)
 				}

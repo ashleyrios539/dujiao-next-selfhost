@@ -35,6 +35,7 @@ type PublicProductQueries interface {
 	GetPublicBySlugForTenant(tenant reseller.TenantContext, slug string) (*productdomain.Product, error)
 	ApplyAutoStockCounts(products []productdomain.Product) error
 	CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCount, error)
+	CountAvailableByBinPrefix(productID uint, bin string) (int64, error)
 }
 
 // ResellerDisplayPricer 是分销站展示价解析端口。
@@ -214,6 +215,7 @@ func (h *PublicHandler) GetProductBySlug(c *gin.Context) {
 }
 
 // GetProductPickStock 获取商品挑卡可用库存聚合（按 SKU/国家/品牌/种类分组）。
+// 可选 query 参数 bin=XXXXXX（6位）：返回该 BIN 前缀的可用数量。
 func (h *PublicHandler) GetProductPickStock(c *gin.Context) {
 	slug := c.Param("slug")
 	tenant := tenantFromRequest(c)
@@ -225,6 +227,16 @@ func (h *PublicHandler) GetProductPickStock(c *gin.Context) {
 			return
 		}
 		ginutil.RespondError(c, response.CodeInternal, "error.product_fetch_failed", err)
+		return
+	}
+
+	if bin := strings.TrimSpace(c.Query("bin")); bin != "" {
+		total, err := h.products.CountAvailableByBinPrefix(product.ID, bin)
+		if err != nil {
+			ginutil.RespondError(c, response.CodeInternal, "error.product_fetch_failed", err)
+			return
+		}
+		response.Success(c, gin.H{"bin_total": total})
 		return
 	}
 

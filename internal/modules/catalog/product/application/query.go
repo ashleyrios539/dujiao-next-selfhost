@@ -36,6 +36,7 @@ type HiddenProductRepository interface {
 type StockCounter interface {
 	CountStockByProductIDs(productIDs []uint) ([]cardsecretcontract.SKUStockCount, error)
 	CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCount, error)
+	CountAvailableByProductFiltered(productID, skuID uint, filter cardsecretcontract.PickFilter) (int64, error)
 }
 
 // Options 描述 Product 读取应用服务的端口和领域错误。
@@ -205,6 +206,14 @@ func (s *Service) CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrC
 		return nil, nil
 	}
 	return s.stock.CountPickAttrs(productID)
+}
+
+// CountAvailableByBinPrefix 统计商品下指定 BIN 前缀的可用卡密数量。
+func (s *Service) CountAvailableByBinPrefix(productID uint, bin string) (int64, error) {
+	if s.stock == nil {
+		return 0, nil
+	}
+	return s.stock.CountAvailableByProductFiltered(productID, 0, cardsecretcontract.PickFilter{BinPrefix: bin})
 }
 
 func normalizeStockStatus(raw string) string {

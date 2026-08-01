@@ -83,6 +83,7 @@ type OrderItemRequest struct {
 	PickCountry      string   `json:"pick_country"`
 	PickBrands       []string `json:"pick_brands"`
 	PickCardTypes    []string `json:"pick_card_types"`
+	PickBin          string   `json:"pick_bin"`
 }
 
 // CreateOrderRequest 用户订单预览/创建请求体（preview 使用）。
@@ -116,6 +117,7 @@ type CreateOrderItem struct {
 	PickCountry      string
 	PickBrands       []string
 	PickCardTypes    []string
+	PickBin          string
 }
 
 // CreateOrderInput 用户订单预览输入。
@@ -177,6 +179,7 @@ type OrderPreviewItem struct {
 	PickCountry        string            `json:"pick_country"`
 	PickBrands         jsonslice.Strings `json:"pick_brands"`
 	PickCardTypes      jsonslice.Strings `json:"pick_card_types"`
+	PickBin            string            `json:"pick_bin"`
 }
 
 // OrderPreviewService 订单金额预览端口。
@@ -267,6 +270,7 @@ func mapOrderItems(items []OrderItemRequest) []CreateOrderItem {
 			PickCountry:      item.PickCountry,
 			PickBrands:       item.PickBrands,
 			PickCardTypes:    item.PickCardTypes,
+			PickBin:          item.PickBin,
 		})
 	}
 	return out

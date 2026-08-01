@@ -426,11 +426,15 @@ func mapServiceOrderItems(items []ordertransport.CreateOrderItem) []orderapp.Cre
 	out := make([]orderapp.CreateOrderItem, 0, len(items))
 	for _, item := range items {
 		out = append(out, orderapp.CreateOrderItem{
-			ProductID:       item.ProductID,
-			SKUID:           item.SKUID,
-			Quantity:        item.Quantity,
-			FulfillmentType: item.FulfillmentType,
+			ProductID:        item.ProductID,
+			SKUID:            item.SKUID,
+			Quantity:         item.Quantity,
+			FulfillmentType:  item.FulfillmentType,
 			CardCheckEnabled: item.CardCheckEnabled,
+			PickCountry:      item.PickCountry,
+			PickBrands:       item.PickBrands,
+			PickCardTypes:    item.PickCardTypes,
+			PickBin:          item.PickBin,
 		})
 	}
 	return out
@@ -459,6 +463,10 @@ func mapOrderPreview(preview *orderapp.OrderPreview) *ordertransport.OrderPrevie
 			WholesaleDiscount:  item.WholesaleDiscount,
 			FulfillmentType:    item.FulfillmentType,
 			CardCheckEnabled:   item.CardCheckEnabled,
+			PickCountry:        item.PickCountry,
+			PickBrands:         item.PickBrands,
+			PickCardTypes:      item.PickCardTypes,
+			PickBin:            item.PickBin,
 		})
 	}
 	return &ordertransport.OrderPreview{

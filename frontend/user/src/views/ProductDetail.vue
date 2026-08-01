@@ -314,70 +314,121 @@
                 </div>
               </div>
 
-              <!-- 挑卡：必须选国家，可选品牌/种类挑卡 -->
+              <!-- 挑卡：三种模式——随机购买/挑头购买/挑卡种类 -->
               <div v-if="pickEnabled" class="mb-8">
                 <h2 class="mb-3 text-sm font-bold uppercase tracking-widest text-muted-foreground">
                   {{ t('productDetail.pickSectionTitle') }}
                 </h2>
                 <div class="space-y-5">
-                  <!-- 国家 -->
-                  <div>
-                    <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickCountryLabel') }}</label>
-                    <select
-                      v-model="pickCountry"
-                      class="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+                  <!-- 模式选择 -->
+                  <div class="grid grid-cols-3 gap-2">
+                    <button
+                      v-for="mode in [
+                        { value: 'random', label: t('productDetail.pickModeRandom') },
+                        { value: 'bin', label: t('productDetail.pickModeBin') },
+                        { value: 'type', label: t('productDetail.pickModeType') },
+                      ]"
+                      :key="mode.value"
+                      type="button"
+                      class="rounded-xl border px-3 py-2.5 text-sm font-medium transition-all"
+                      :class="pickMode === mode.value
+                        ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/30'
+                        : 'border bg-secondary text-foreground hover:border-primary/30 hover:-translate-y-0.5'"
+                      @click="selectPickMode(mode.value as 'random' | 'bin' | 'type')"
                     >
-                      <option value="">{{ t('productDetail.pickCountryPlaceholder') }}</option>
-                      <option v-for="country in availableCountries" :key="country.code" :value="country.code">
-                        {{ country.name }} {{ country.code }}
-                      </option>
-                    </select>
+                      {{ mode.label }}
+                    </button>
+                  </div>
+
+                  <!-- 随机购买 / 挑卡种类：国家搜索 -->
+                  <div v-if="pickMode === 'random' || pickMode === 'type'">
+                    <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickCountryLabel') }}</label>
+                    <div v-if="pickCountry" class="mb-2 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-sm">
+                      <span class="font-medium text-primary">{{ selectedCountryName }}</span>
+                      <button type="button" class="text-muted-foreground hover:text-destructive" @click="pickCountry = ''">✕</button>
+                    </div>
+                    <div v-else class="relative">
+                      <input
+                        v-model="countrySearch"
+                        type="text"
+                        class="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+                        :placeholder="t('productDetail.pickCountrySearch')"
+                        @focus="countryDropdownOpen = true"
+                        @blur="onCountryBlur"
+                      />
+                      <div v-if="countryDropdownOpen" class="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-input bg-background shadow-lg">
+                        <button
+                          v-for="country in filteredCountries"
+                          :key="country.code"
+                          type="button"
+                          class="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors"
+                          @mousedown.prevent="selectCountry(country.code)"
+                        >{{ country.name }} {{ country.code }}</button>
+                        <p v-if="filteredCountries.length === 0" class="px-3 py-2 text-sm text-muted-foreground">—</p>
+                      </div>
+                    </div>
                     <p v-if="pickStockLoading" class="mt-1.5 text-xs text-muted-foreground">{{ t('productDetail.pickStockLoading') }}</p>
                     <p v-else-if="pickCountry" class="mt-1.5 text-xs" :class="pickAvailableCount > 0 ? 'text-emerald-600' : 'text-destructive'">
                       {{ t('productDetail.pickAvailable', { count: pickAvailableCount }) }}
                     </p>
                   </div>
 
-                  <!-- 品牌 chips -->
-                  <div>
-                    <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickBrandLabel') }}</label>
-                    <div class="flex flex-wrap gap-2">
-                      <button
-                        v-for="brand in pickBrandOptions"
-                        :key="brand.value"
-                        type="button"
-                        class="rounded-full border px-4 py-1.5 text-sm font-medium transition-all"
-                        :class="pickBrands.includes(brand.value)
-                          ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/30'
-                          : 'border bg-secondary text-foreground hover:border-primary/30 hover:-translate-y-0.5'"
-                        @click="togglePickBrand(brand.value)"
-                      >
-                        {{ brand.label }}
-                      </button>
-                    </div>
+                  <!-- 挑头购买：BIN 输入 -->
+                  <div v-if="pickMode === 'bin'">
+                    <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickBinLabel') }}</label>
+                    <input
+                      v-model="pickBin"
+                      type="text"
+                      inputmode="numeric"
+                      maxlength="6"
+                      class="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm font-mono tracking-widest outline-none transition-colors focus:border-primary"
+                      :placeholder="t('productDetail.pickBinLabel')"
+                    />
+                    <p v-if="binStockLoading" class="mt-1.5 text-xs text-muted-foreground">{{ t('productDetail.pickStockLoading') }}</p>
+                    <p v-else-if="pickBin.length === 6 && /^\d{6}$/.test(pickBin)" class="mt-1.5 text-xs" :class="(binStockCount ?? 0) > 0 ? 'text-emerald-600' : 'text-destructive'">
+                      {{ t('productDetail.pickBinAvailable', { count: binStockCount ?? 0 }) }}
+                    </p>
                   </div>
 
-                  <!-- 种类 chips -->
-                  <div>
-                    <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickTypeLabel') }}</label>
-                    <div class="flex flex-wrap gap-2">
-                      <button
-                        v-for="type in pickTypeOptions"
-                        :key="type.value"
-                        type="button"
-                        class="rounded-full border px-4 py-1.5 text-sm font-medium transition-all"
-                        :class="pickCardTypes.includes(type.value)
-                          ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/30'
-                          : 'border bg-secondary text-foreground hover:border-primary/30 hover:-translate-y-0.5'"
-                        @click="togglePickType(type.value)"
-                      >
-                        {{ type.label }}
-                      </button>
+                  <!-- 挑卡种类：品牌 + 种类 chips -->
+                  <template v-if="pickMode === 'type'">
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickBrandLabel') }}</label>
+                      <div class="flex flex-wrap gap-2">
+                        <button
+                          v-for="brand in pickBrandOptions"
+                          :key="brand.value"
+                          type="button"
+                          class="rounded-full border px-4 py-1.5 text-sm font-medium transition-all"
+                          :class="pickBrands.includes(brand.value)
+                            ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/30'
+                            : 'border bg-secondary text-foreground hover:border-primary/30 hover:-translate-y-0.5'"
+                          @click="togglePickBrand(brand.value)"
+                        >{{ brand.label }}</button>
+                      </div>
                     </div>
-                  </div>
+                    <div>
+                      <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickTypeLabel') }}</label>
+                      <div class="flex flex-wrap gap-2">
+                        <button
+                          v-for="type in pickTypeOptions"
+                          :key="type.value"
+                          type="button"
+                          class="rounded-full border px-4 py-1.5 text-sm font-medium transition-all"
+                          :class="pickCardTypes.includes(type.value)
+                            ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/30'
+                            : 'border bg-secondary text-foreground hover:border-primary/30 hover:-translate-y-0.5'"
+                          @click="togglePickType(type.value)"
+                        >{{ type.label }}</button>
+                      </div>
+                    </div>
+                    <p v-if="pickCountry && pickBrands.length === 0 && pickCardTypes.length === 0" class="text-xs text-amber-500">
+                      {{ t('productDetail.pickTypeRequired') }}
+                    </p>
+                  </template>
 
                   <!-- 当前所选 -->
-                  <div class="rounded-lg bg-muted/60 px-3.5 py-2.5 text-sm">
+                  <div v-if="pickMode" class="rounded-lg bg-muted/60 px-3.5 py-2.5 text-sm">
                     <span class="text-muted-foreground">{{ t('productDetail.pickSelectionLabel') }}：</span>
                     <span class="font-medium text-foreground">{{ pickSelectionSummary || t('productDetail.pickSelectionEmpty') }}</span>
                   </div>
@@ -567,7 +618,9 @@ const {
   cardCheckEnabled, cardCheckPlainPrice, cardCheckCheckedPrice,
   pickEnabled, pickCountry, pickBrands, pickCardTypes, pickStockLoading,
   pickBrandOptions, pickTypeOptions, togglePickBrand, togglePickType, pickSelectionSummary,
-  availableCountries, pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
+  pickMode, pickBin, binStockCount, binStockLoading, selectPickMode,
+  countrySearch, countryDropdownOpen, selectCountry, onCountryBlur, filteredCountries, selectedCountryName,
+  pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
   selectedSkuMemberPrice, hasMemberPrice,
   hasSelectedSkuWholesalePrice, selectedSkuWholesaleFinalIsMember, selectedSkuWholesaleFinalPrice,
   selectedSkuWholesaleRules,

@@ -117,25 +117,35 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 		productCurrency := currency
 		basePrice := sku.PriceAmount.Decimal.Round(2)
 
-		// 挑卡：商品开启挑卡时国家必选；品牌/种类为可选过滤，均需合法。
+		// 挑卡：商品开启挑卡时需选择模式——挑头（BIN）或国家+品牌/种类。
 		pickCountry := strings.ToUpper(strings.TrimSpace(item.PickCountry))
 		pickBrands := normalizePickBrands(item.PickBrands)
 		pickCardTypes := normalizePickCardTypes(item.PickCardTypes)
-		if pickCountry != "" && !product.PickEnabled {
+		pickBin := strings.TrimSpace(item.PickBin)
+		if (pickCountry != "" || pickBin != "") && !product.PickEnabled {
 			return nil, ErrProductPickNotSupported
 		}
-		if product.PickEnabled && pickCountry == "" {
-			return nil, ErrProductPickCountryRequired
-		}
-		if pickCountry != "" && !validPickCountry(pickCountry) {
-			return nil, ErrProductPickCountryInvalid
-		}
 		if product.PickEnabled {
-			if err := validatePickBrands(pickBrands); err != nil {
-				return nil, err
+			if pickBin != "" && pickCountry != "" {
+				return nil, ErrProductPickBinConflict
 			}
-			if err := validatePickCardTypes(pickCardTypes); err != nil {
-				return nil, err
+			if pickBin == "" && pickCountry == "" {
+				return nil, ErrProductPickModeRequired
+			}
+			if pickBin != "" {
+				if !validPickBin(pickBin) {
+					return nil, ErrProductPickBinInvalid
+				}
+			} else {
+				if !validPickCountry(pickCountry) {
+					return nil, ErrProductPickCountryInvalid
+				}
+				if err := validatePickBrands(pickBrands); err != nil {
+					return nil, err
+				}
+				if err := validatePickCardTypes(pickCardTypes); err != nil {
+					return nil, err
+				}
 			}
 		}
 		pickSurcharge := productdomain.PickUnitSurcharge(product.PickPrices, pickBrands, pickCardTypes)
@@ -291,6 +301,7 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 			PickCountry:                  pickCountry,
 			PickBrands:                   jsonslice.Strings(pickBrands),
 			PickCardTypes:                jsonslice.Strings(pickCardTypes),
+			PickBin:                      pickBin,
 			ManualFormSchemaSnapshotJSON: manualSchemaSnapshot,
 			ManualFormSubmissionJSON:     manualSubmission,
 			InstructionsJSON:             product.InstructionsJSON,
@@ -458,6 +469,9 @@ func mergeCreateOrderItems(items []CreateOrderItem) ([]CreateOrderItem, error) {
 		if country := strings.ToUpper(strings.TrimSpace(item.PickCountry)); country != "" {
 			key += ":pick:" + country + ":" + strings.Join(item.PickBrands, ",") + ":" + strings.Join(item.PickCardTypes, ",")
 		}
+		if bin := strings.TrimSpace(item.PickBin); bin != "" {
+			key += ":bin:" + bin
+		}
 		if idx, ok := indexMap[key]; ok {
 			merged[idx].Quantity += item.Quantity
 			continue
@@ -471,6 +485,7 @@ func mergeCreateOrderItems(items []CreateOrderItem) ([]CreateOrderItem, error) {
 			PickCountry:      item.PickCountry,
 			PickBrands:       item.PickBrands,
 			PickCardTypes:    item.PickCardTypes,
+			PickBin:          item.PickBin,
 		})
 	}
 	return merged, nil
@@ -616,6 +631,19 @@ func validPickCountry(value string) bool {
 	}
 	for _, r := range value {
 		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
+// validPickBin 校验 BIN 为 6 位数字。
+func validPickBin(value string) bool {
+	if len(value) != 6 {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
 			return false
 		}
 	}
