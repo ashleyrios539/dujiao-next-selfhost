@@ -1,12 +1,25 @@
 #!/usr/bin/env bash
 # ============================================================================
-#  Dujiao-Next（含自动测活）Ubuntu 一键部署脚本
+#  Dujiao-Next（含自动测活）Ubuntu 一键部署脚本（自包含，全新服务器直接可用）
 #  适用系统：Ubuntu 22.04 / 24.04（x86_64）
-#  运行方式：sudo bash deploy_ubuntu.sh
+#
+#  ═══════════ 全新服务器一键运行（任选其一）═══════════
+#
+#  方式 A：下载脚本后运行（交互式向导，推荐）
+#    wget https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/deploy_ubuntu.sh
+#    sudo bash deploy_ubuntu.sh
+#
+#  方式 B：一条命令直接装（保留交互式向导，需服务器能访问 GitHub）
+#    sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/deploy_ubuntu.sh)"
+#
+#  方式 C：非交互，全部用环境变量指定
+#    sudo DOMAIN=shop.example.com DJ_ADMIN_PASS='你的密码' bash deploy_ubuntu.sh
+#
+#  ═══════════════════════════════════════════════════════════
 #
 #  功能：
 #    1. 安装依赖（Git / Go / Node / pnpm / Redis / Nginx）
-#    2. 克隆源码并构建 fullstack 单二进制
+#    2. 克隆源码并构建 fullstack 单二进制（含自动测活功能）
 #    3. 生成强随机密钥与 config.yml
 #    4. 创建独立运行用户 + systemd 服务
 #    5. 可选：配置 Nginx 反向代理与 HTTPS
@@ -464,6 +477,12 @@ EOF
   echo "    -H \"Authorization: Bearer \$TOKEN\" -H 'Content-Type: application/json' \\"
   echo "    -d '{\"card_check_enabled\":true}'"
   echo ""
+  echo " 也可在后台商品列表直接点击『测活』徽章切换；编辑商品可设置『测活价格』。"
+  echo " 用户端：商品页勾选『开启测活』后按测活价格购买，未勾选按原价直接发货。"
+  echo "---------------------------------------------------------------"
+  echo " 再次部署 / 更新："
+  echo "  sudo bash $SRC_DIR/deploy_ubuntu.sh"
+  echo "  （或：sudo bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/$REPO_BRANCH/deploy_ubuntu.sh)\"）"
   echo " 详细说明见仓库内 DEPLOY_UBUNTU.md 第九章"
   echo "================================================================"
 }
