@@ -135,7 +135,7 @@ reseller:
 ### 挑卡关键约定
 - 卡密属性来源：**BIN 库**（上传 CSV → `card_bins` 表），导入卡密时取卡号前 6 位自动标注国家/品牌/种类；未命中属性留空，仅作普通卡售卖。
 - 品牌归一化：`VISA→visa`、`MASTERCARD/MC→mastercard`、`DISCOVER→discover`、其余（含空）→`other`。
-- 种类三值：`D`（含预付）、`PD`（纯D不含预付）、`C`（纯C），默认映射 `PREPAID/GIFT→D`、`DEBIT→PD`、`CREDIT/CHARGE→C`（上传 UI 可改）。
+- 种类三值：`D`（含预付）、`PD`（纯D不含预付）、`C`（纯C）。判定逻辑：`Type` 列命中显式映射（默认 `CREDIT/CHARGE→C`）直接得 `C`；其余非信用卡按「预付标记列」（默认 `Category`）是否命中 `PREPAID` 区分——命中 → `D`（含预付），未命中 → `PD`（纯D）。
 - 挑卡加价：商品级属性单价表（visa/mastercard/discover/other/D/PD/C），同一属性组（品牌/种类）多选时只按该组**最高单价**计一次，并入商品单价参与优惠计算。
 - 下单校验：商品开启挑卡时**国家必选**、格式两位大写；品牌/种类值合法；预留库存不足直接 `ErrCardSecretInsufficient` 无法下单。
 | 商品字段 | `internal/modules/catalog/product/domain/product.go` | `CardCheckEnabled`（支持测活）、`CardCheckFee`（测活价格） |

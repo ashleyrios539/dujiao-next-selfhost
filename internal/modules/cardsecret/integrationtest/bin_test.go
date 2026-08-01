@@ -27,6 +27,8 @@ const binCSVContent = `BIN,Brand,Type,Category,Issuer,IssuerPhone,IssuerUrl,isoC
 550000,MASTERCARD,PREPAID,GIFT,"GIFT CO",,https://x.com,CA,CAN,"CANADA"
 601100,DISCOVER,DEBIT,CLASSIC,"D BANK",,https://x.com,AU,AUS,"AUSTRALIA"
 999999,AMEX,CHARGE,PLATINUM,"AMEX",,https://x.com,DE,DEU,"GERMANY"
+440000,VISA,DEBIT,"PREPAID CLASSIC","P BANK",,https://x.com,CA,CAN,"CANADA"
+445555,VISA,DEBIT,PLATINUM,"N BANK",,https://x.com,US,USA,"UNITED STATES"
 `
 
 func setupBinServiceTestDB(t *testing.T) *gorm.DB {
@@ -71,8 +73,8 @@ func TestImportCardBinsParsesRealHeaderAndNormalizes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("import card bins failed: %v", err)
 	}
-	if result.Total != 5 || result.Inserted != 5 {
-		t.Fatalf("expected 5 imported bins, got total=%d inserted=%d", result.Total, result.Inserted)
+	if result.Total != 7 || result.Inserted != 7 {
+		t.Fatalf("expected 7 imported bins, got total=%d inserted=%d", result.Total, result.Inserted)
 	}
 
 	expected := map[string]cardsecretdomain.CardBin{
@@ -81,6 +83,8 @@ func TestImportCardBinsParsesRealHeaderAndNormalizes(t *testing.T) {
 		"550000": {BIN: "550000", Country: "CA", Brand: cardsecretdomain.PickBrandMastercard, CardType: cardsecretdomain.CardTypeD},
 		"601100": {BIN: "601100", Country: "AU", Brand: cardsecretdomain.PickBrandDiscover, CardType: cardsecretdomain.CardTypePD},
 		"999999": {BIN: "999999", Country: "DE", Brand: cardsecretdomain.PickBrandOther, CardType: cardsecretdomain.CardTypeC},
+		"440000": {BIN: "440000", Country: "CA", Brand: cardsecretdomain.PickBrandVisa, CardType: cardsecretdomain.CardTypeD},
+		"445555": {BIN: "445555", Country: "US", Brand: cardsecretdomain.PickBrandVisa, CardType: cardsecretdomain.CardTypePD},
 	}
 	rows, _, err := svc.ListCardBins(cardsecretcontract.CardBinFilter{Limit: 50})
 	if err != nil {

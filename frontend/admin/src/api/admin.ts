@@ -266,6 +266,7 @@ export interface AdminCardBinColumnMap {
   country: string
   brand: string
   type: string
+  prepaid: string
 }
 
 export interface AdminImportCardBinsPayload {

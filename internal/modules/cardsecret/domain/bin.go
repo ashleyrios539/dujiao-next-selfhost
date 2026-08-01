@@ -56,10 +56,12 @@ func NormalizePickBrand(raw string) string {
 	return PickBrandOther
 }
 
-// NormalizeCardType 把 BIN 库种类列的值映射到挑卡种类三值；无法映射返回空串。
-// rules 提供「源值（大写）→ 种类」映射，未提供时使用默认规则。
-func NormalizeCardType(raw string, rules map[string]string) string {
-	value := strings.ToUpper(strings.TrimSpace(raw))
+// NormalizeCardType 把 BIN 库卡片分类到挑卡种类三值：
+//   - typeValue 命中 rules 显式映射（如 CREDIT→C）时直接返回该值；
+//   - 否则按「是否含 PREPAID 属性」区分 D 家族：prepaidValue 或 typeValue 命中 prepaidKeywords → D（含预付），
+//     否则 → PD（纯D）。
+func NormalizeCardType(typeValue, prepaidValue string, rules map[string]string, prepaidKeywords []string) string {
+	value := strings.ToUpper(strings.TrimSpace(typeValue))
 	if value == "" {
 		return ""
 	}
@@ -67,17 +69,18 @@ func NormalizeCardType(raw string, rules map[string]string) string {
 		if mapped, ok := rules[value]; ok && ValidCardType(mapped) {
 			return mapped
 		}
-		return ""
 	}
-	switch value {
-	case "PREPAID", "GIFT":
-		return CardTypeD
-	case "DEBIT":
-		return CardTypePD
-	case "CREDIT", "CHARGE":
-		return CardTypeC
+	haystack := strings.ToUpper(strings.TrimSpace(prepaidValue)) + "|" + value
+	for _, keyword := range prepaidKeywords {
+		normalized := strings.ToUpper(strings.TrimSpace(keyword))
+		if normalized == "" {
+			continue
+		}
+		if strings.Contains(haystack, normalized) {
+			return CardTypeD
+		}
 	}
-	return ""
+	return CardTypePD
 }
 
 // CardBin BIN 库条目：前 6 位卡号 → 国家/品牌/种类标注。

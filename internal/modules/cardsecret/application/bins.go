@@ -42,9 +42,10 @@ type BinColumnMap struct {
 	Country string `json:"country"`
 	Brand   string `json:"brand"`
 	Type    string `json:"type"`
+	Prepaid string `json:"prepaid"`
 }
 
-// BinTypeRule 描述「BIN 库种类列值 → 挑卡种类三值」的映射规则。
+// BinTypeRule 描述「BIN 库种类列值 → 挑卡种类三值」的显式映射规则。
 type BinTypeRule map[string]string
 
 // DefaultBinColumnMap 默认列映射（适配常见 BIN 库表头）。
@@ -54,25 +55,29 @@ func DefaultBinColumnMap() BinColumnMap {
 		Country: "isoCode2",
 		Brand:   "Brand",
 		Type:    "Type",
+		Prepaid: "Category",
 	}
 }
 
-// DefaultBinTypeRules 默认种类映射规则。
+// DefaultBinTypeRules 默认显式种类映射：Credit/Charge 直接标记为 C。
 func DefaultBinTypeRules() BinTypeRule {
 	return BinTypeRule{
-		"PREPAID": cardsecretdomain.CardTypeD,
-		"GIFT":    cardsecretdomain.CardTypeD,
-		"DEBIT":   cardsecretdomain.CardTypePD,
-		"CREDIT":  cardsecretdomain.CardTypeC,
-		"CHARGE":  cardsecretdomain.CardTypeC,
+		"CREDIT": cardsecretdomain.CardTypeC,
+		"CHARGE": cardsecretdomain.CardTypeC,
 	}
+}
+
+// DefaultPrepaidKeywords 默认「含预付」标记：命中即归入 D（含预付）。
+func DefaultPrepaidKeywords() []string {
+	return []string{"PREPAID"}
 }
 
 // ImportCardBinsInput BIN 库导入输入。
 type ImportCardBinsInput struct {
-	File      *multipart.FileHeader
-	ColumnMap *BinColumnMap
-	TypeRules *BinTypeRule
+	File             *multipart.FileHeader
+	ColumnMap        *BinColumnMap
+	TypeRules        *BinTypeRule
+	PrepaidKeywords  []string
 }
 
 // ImportCardBinsResult BIN 库导入结果。
@@ -105,8 +110,12 @@ func (s *Service) ImportCardBins(input ImportCardBinsInput) (*ImportCardBinsResu
 	if input.TypeRules != nil {
 		typeRules = *input.TypeRules
 	}
+	prepaidKeywords := DefaultPrepaidKeywords()
+	if len(input.PrepaidKeywords) > 0 {
+		prepaidKeywords = input.PrepaidKeywords
+	}
 
-	rows, err := parseCardBinsCSV(file, columnMap, typeRules)
+	rows, err := parseCardBinsCSV(file, columnMap, typeRules, prepaidKeywords)
 	if err != nil {
 		return nil, ErrBinImportFailed
 	}
@@ -227,8 +236,8 @@ func (s *Service) annotateCardSecrets(items []cardsecretdomain.Secret) {
 	}
 }
 
-// parseCardBinsCSV 解析 BIN 库 CSV，按列映射与种类规则归一化。
-func parseCardBinsCSV(reader io.Reader, columnMap BinColumnMap, typeRules BinTypeRule) ([]cardsecretdomain.CardBin, error) {
+// parseCardBinsCSV 解析 BIN 库 CSV，按列映射、种类显式规则与预付标记归一化。
+func parseCardBinsCSV(reader io.Reader, columnMap BinColumnMap, typeRules BinTypeRule, prepaidKeywords []string) ([]cardsecretdomain.CardBin, error) {
 	csvReader := csv.NewReader(reader)
 	csvReader.TrimLeadingSpace = true
 
@@ -266,7 +275,7 @@ func parseCardBinsCSV(reader io.Reader, columnMap BinColumnMap, typeRules BinTyp
 			indexes = buildBinColumnIndexes(header, columnMap)
 			continue
 		}
-		row := buildCardBinFromRecord(cleaned, indexes, typeRules)
+		row := buildCardBinFromRecord(cleaned, indexes, typeRules, prepaidKeywords)
 		if row != nil {
 			rows = append(rows, *row)
 		}
@@ -292,6 +301,7 @@ func buildBinColumnIndexes(header []string, columnMap BinColumnMap) map[string]i
 		{columnMap.Country, "country"},
 		{columnMap.Brand, "brand"},
 		{columnMap.Type, "type"},
+		{columnMap.Prepaid, "prepaid"},
 	} {
 		if field.name == "" {
 			continue
@@ -303,7 +313,7 @@ func buildBinColumnIndexes(header []string, columnMap BinColumnMap) map[string]i
 	return indexes
 }
 
-func buildCardBinFromRecord(record []string, indexes map[string]int, typeRules BinTypeRule) *cardsecretdomain.CardBin {
+func buildCardBinFromRecord(record []string, indexes map[string]int, typeRules BinTypeRule, prepaidKeywords []string) *cardsecretdomain.CardBin {
 	binIndex, hasBin := indexes["bin"]
 	if !hasBin || binIndex >= len(record) {
 		return nil
@@ -324,11 +334,15 @@ func buildCardBinFromRecord(record []string, indexes map[string]int, typeRules B
 	if index, ok := indexes["type"]; ok && index < len(record) {
 		typeValue = record[index]
 	}
+	prepaidValue := ""
+	if index, ok := indexes["prepaid"]; ok && index < len(record) {
+		prepaidValue = record[index]
+	}
 	return &cardsecretdomain.CardBin{
 		BIN:      bin,
 		Country:  country,
 		Brand:    cardsecretdomain.NormalizePickBrand(rawBrand),
 		RawBrand: rawBrand,
-		CardType: cardsecretdomain.NormalizeCardType(typeValue, typeRules),
+		CardType: cardsecretdomain.NormalizeCardType(typeValue, prepaidValue, typeRules, prepaidKeywords),
 	}
 }

@@ -488,6 +488,7 @@ const (
 	SettingKeyCardBinConfig       = "card_bin_config"
 	SettingFieldCardBinColumnMap  = "column_map"
 	SettingFieldCardBinTypeRules  = "type_rules"
+	SettingFieldCardBinPrepaidKeywords = "prepaid_keywords"
 
 	SettingKeyHomeAnnouncement   = "home_announcement"
 	SettingFieldPaymentCallback  = "payment_callback"

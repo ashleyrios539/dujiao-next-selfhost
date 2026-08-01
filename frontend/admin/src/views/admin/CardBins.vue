@@ -18,20 +18,22 @@ const defaultColumnMap = (): AdminCardBinColumnMap => ({
   country: 'isoCode2',
   brand: 'Brand',
   type: 'Type',
+  prepaid: 'Category',
 })
 
 const defaultTypeRules: Record<string, string> = {
-  PREPAID: 'D',
-  GIFT: 'D',
-  DEBIT: 'PD',
   CREDIT: 'C',
   CHARGE: 'C',
 }
 
+const defaultPrepaidKeywords = ['PREPAID']
+
 const columnMap = reactive<AdminCardBinColumnMap>(defaultColumnMap())
 const typeRules = reactive<Record<string, string>>({ ...defaultTypeRules })
 const typeRuleSource = ref('')
-const typeRuleTarget = ref<'D' | 'PD' | 'C'>('D')
+const typeRuleTarget = ref<'D' | 'PD' | 'C'>('C')
+const prepaidKeywords = ref<string[]>(defaultPrepaidKeywords)
+const prepaidKeywordInput = ref('')
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const uploading = ref(false)
@@ -137,6 +139,7 @@ const handleFileChange = async (event: Event) => {
     formData.append('file', file)
     formData.append('column_map', JSON.stringify(columnMap))
     formData.append('type_rules', JSON.stringify(typeRules))
+    formData.append('prepaid_keywords', JSON.stringify(prepaidKeywords.value))
     const response = await adminAPI.importCardBins(formData)
     importResult.value = response.data.data
     await refreshAll()
@@ -152,6 +155,19 @@ const addTypeRule = () => {
   if (!source) return
   typeRules[source] = typeRuleTarget.value
   typeRuleSource.value = ''
+}
+
+const addPrepaidKeyword = () => {
+  const keyword = prepaidKeywordInput.value.trim().toUpperCase()
+  if (!keyword) return
+  if (!prepaidKeywords.value.includes(keyword)) {
+    prepaidKeywords.value.push(keyword)
+  }
+  prepaidKeywordInput.value = ''
+}
+
+const removePrepaidKeyword = (keyword: string) => {
+  prepaidKeywords.value = prepaidKeywords.value.filter((item) => item !== keyword)
 }
 
 const removeTypeRule = (source: string) => {
@@ -235,6 +251,10 @@ onMounted(() => {
             <Label class="text-xs">{{ t('admin.cardBins.columns.type') }}</Label>
             <Input v-model="columnMap.type" />
           </div>
+          <div class="space-y-1.5">
+            <Label class="text-xs">{{ t('admin.cardBins.columns.prepaid') }}</Label>
+            <Input v-model="columnMap.prepaid" />
+          </div>
         </div>
         <p class="mt-4 text-xs text-muted-foreground">{{ t('admin.cardBins.columnMapDefaultHint') }}</p>
       </div>
@@ -271,6 +291,27 @@ onMounted(() => {
             <span>{{ cardTypeLabel(target) }}</span>
             <button type="button" class="text-muted-foreground hover:text-destructive" @click="removeTypeRule(source)">×</button>
           </span>
+        </div>
+        <p class="mt-4 text-xs text-muted-foreground">{{ t('admin.cardBins.typeRulesHint') }}</p>
+        <div class="mt-4 border-t border-border pt-4">
+          <div class="flex flex-wrap items-end gap-2">
+            <div class="flex-1 space-y-1.5">
+              <Label class="text-xs">{{ t('admin.cardBins.prepaidLabel') }}</Label>
+              <Input v-model="prepaidKeywordInput" :placeholder="t('admin.cardBins.prepaidPlaceholder')" @keyup.enter="addPrepaidKeyword" />
+            </div>
+            <Button size="sm" variant="outline" @click="addPrepaidKeyword">{{ t('admin.cardBins.prepaidAdd') }}</Button>
+          </div>
+          <p class="mt-2 text-xs text-muted-foreground">{{ t('admin.cardBins.prepaidHint') }}</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <span
+              v-for="keyword in prepaidKeywords"
+              :key="keyword"
+              class="inline-flex items-center gap-2 rounded-full border border-border bg-muted/30 px-3 py-1 text-xs"
+            >
+              <span class="font-mono">{{ keyword }}</span>
+              <button type="button" class="text-muted-foreground hover:text-destructive" @click="removePrepaidKeyword(keyword)">×</button>
+            </span>
+          </div>
         </div>
       </div>
     </div>

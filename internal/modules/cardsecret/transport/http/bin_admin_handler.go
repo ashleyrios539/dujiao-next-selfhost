@@ -72,6 +72,14 @@ func (h *BinAdminHandler) ImportCardBins(c *gin.Context) {
 		}
 		input.TypeRules = &typeRules
 	}
+	if raw := strings.TrimSpace(c.PostForm("prepaid_keywords")); raw != "" {
+		var keywords []string
+		if err := json.Unmarshal([]byte(raw), &keywords); err != nil {
+			ginutil.RespondError(c, response.CodeBadRequest, "error.card_bin_invalid", nil)
+			return
+		}
+		input.PrepaidKeywords = keywords
+	}
 
 	result, err := h.service.ImportCardBins(input)
 	if err != nil {
