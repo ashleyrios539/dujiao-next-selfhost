@@ -768,6 +768,34 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
 
   const pickUnitPrice = computed<number>(() => cardCheckPlainPrice.value + pickUnitSurcharge.value)
 
+  const togglePickBrand = (value: string) => {
+    pickBrands.value = pickBrands.value.includes(value)
+      ? pickBrands.value.filter((b) => b !== value)
+      : [...pickBrands.value, value]
+  }
+
+  const togglePickType = (value: string) => {
+    pickCardTypes.value = pickCardTypes.value.includes(value)
+      ? pickCardTypes.value.filter((ty) => ty !== value)
+      : [...pickCardTypes.value, value]
+  }
+
+  const pickSelectionSummary = computed(() => {
+    if (!pickCountry.value) return ''
+    const parts: string[] = []
+    const country = availableCountries.value.find((c) => String(c.code) === pickCountry.value)
+    parts.push(country ? `${country.name} ${country.code}` : pickCountry.value)
+    if (pickBrands.value.length) {
+      const labels = pickBrands.value.map((b) => pickBrandOptions.find((o) => o.value === b)?.label || b)
+      parts.push(labels.join('、'))
+    }
+    if (pickCardTypes.value.length) {
+      const labels = pickCardTypes.value.map((ty) => pickTypeOptions.find((o) => o.value === ty)?.label || ty)
+      parts.push(labels.join('、'))
+    }
+    return parts.join(' · ')
+  })
+
   const resetPickSelection = () => {
     pickCountry.value = ''
     pickHeadEnabled.value = false
@@ -795,7 +823,7 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     cardCheckEnabled, cardCheckFeeAmount, cardCheckPlainPrice, cardCheckCheckedPrice,
     // 挑卡
     pickEnabled, pickCountry, pickHeadEnabled, pickBrands, pickCardTypes, pickStockLoading,
-    pickBrandOptions, pickTypeOptions,
+    pickBrandOptions, pickTypeOptions, togglePickBrand, togglePickType, pickSelectionSummary,
     availableCountries, pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
     resetPickSelection,
     // 价格计算

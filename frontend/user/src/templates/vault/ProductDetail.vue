@@ -166,81 +166,96 @@
           </div>
 
           <!-- 测活选项：用户自选是否测活，仅展示测活/不测活两档价格 -->
-          <div v-if="product.card_check_enabled" class="my-5 rounded-xl border-2 border-hairline-strong bg-card/60 px-4 py-4">
-            <label class="flex cursor-pointer items-center justify-between gap-3">
-              <span class="flex items-center gap-2">
-                <input
-                  id="card_check_enabled"
-                  v-model="cardCheckEnabled"
-                  type="checkbox"
-                  class="h-4 w-4 shrink-0 rounded border-input"
-                />
-                <span class="text-sm font-semibold">{{ t('productDetail.cardCheckLabel') }}</span>
-              </span>
+          <div v-if="product.card_check_enabled" class="my-5">
+            <div class="mb-2.5 text-[13px] font-bold uppercase tracking-[0.04em] text-muted-foreground">{{ t('productDetail.cardCheckSectionTitle') }}</div>
+            <label class="flex cursor-pointer items-center gap-2">
+              <input
+                id="card_check_enabled"
+                v-model="cardCheckEnabled"
+                type="checkbox"
+                class="h-4 w-4 shrink-0 rounded border-input"
+              />
+              <span class="text-sm font-semibold">{{ t('productDetail.cardCheckLabel') }}</span>
             </label>
             <div class="mt-3 flex flex-wrap items-end gap-x-8 gap-y-2">
               <div>
                 <div class="text-xs text-muted-foreground">{{ t('productDetail.cardCheckPlainPrice') }}</div>
-                <div class="text-lg font-bold text-muted-foreground">{{ formatPrice(cardCheckPlainPrice, siteCurrency) }}</div>
+                <div class="text-lg font-bold" :class="cardCheckEnabled ? 'text-muted-foreground' : 'text-primary'">{{ formatPrice(cardCheckPlainPrice, siteCurrency) }}</div>
               </div>
               <div>
                 <div class="text-xs text-muted-foreground">{{ t('productDetail.cardCheckCheckedPrice') }}</div>
-                <div class="text-lg font-bold text-primary">{{ formatPrice(cardCheckCheckedPrice, siteCurrency) }}</div>
+                <div class="text-lg font-bold" :class="cardCheckEnabled ? 'text-primary' : 'text-muted-foreground'">{{ formatPrice(cardCheckCheckedPrice, siteCurrency) }}</div>
               </div>
             </div>
           </div>
 
           <!-- 挑卡：必须选国家，可选品牌/种类挑卡 -->
-          <div v-if="pickEnabled" class="my-5 rounded-xl border-2 border-hairline-strong bg-card/60 px-4 py-4">
+          <div v-if="pickEnabled" class="my-5">
+            <div class="mb-2.5 text-[13px] font-bold uppercase tracking-[0.04em] text-muted-foreground">{{ t('productDetail.pickSectionTitle') }}</div>
             <div class="space-y-4">
+              <!-- 国家 -->
               <div>
-                <label class="mb-1.5 block text-sm font-semibold text-foreground">{{ t('productDetail.pickCountryLabel') }}</label>
+                <label class="mb-2 block text-sm font-semibold text-foreground">{{ t('productDetail.pickCountryLabel') }}</label>
                 <select
                   v-model="pickCountry"
-                  class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  class="w-full rounded-sm border-2 border-hairline-strong bg-card px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
                 >
                   <option value="">{{ t('productDetail.pickCountryPlaceholder') }}</option>
                   <option v-for="country in availableCountries" :key="country.code" :value="country.code">
                     {{ country.name }} {{ country.code }}
                   </option>
                 </select>
-                <p v-if="pickStockLoading" class="mt-1 text-xs text-muted-foreground">{{ t('productDetail.pickStockLoading') }}</p>
-                <p v-else-if="pickCountry" class="mt-1 text-xs" :class="pickAvailableCount > 0 ? 'text-emerald-700' : 'text-destructive'">
+                <p v-if="pickStockLoading" class="mt-1.5 text-[13px] text-muted-foreground">{{ t('productDetail.pickStockLoading') }}</p>
+                <p v-else-if="pickCountry" class="mt-1.5 text-[13px]" :class="pickAvailableCount > 0 ? 'text-emerald-600' : 'text-destructive'">
                   {{ t('productDetail.pickAvailable', { count: pickAvailableCount }) }}
                 </p>
               </div>
 
-              <div class="flex items-center gap-2">
-                <input
-                  id="pick_head_enabled"
-                  v-model="pickHeadEnabled"
-                  type="checkbox"
-                  class="h-4 w-4 rounded border-input"
-                />
-                <label for="pick_head_enabled" class="text-sm font-semibold select-none">{{ t('productDetail.pickHeadLabel') }}</label>
-              </div>
-
-              <div v-if="pickHeadEnabled" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label class="mb-1.5 block text-sm font-semibold text-foreground">{{ t('productDetail.pickBrandLabel') }}</label>
-                  <div class="space-y-1.5">
-                    <label v-for="brand in pickBrandOptions" :key="brand.value" class="flex cursor-pointer items-center gap-2 text-sm">
-                      <input v-model="pickBrands" type="checkbox" :value="brand.value" class="h-4 w-4 rounded border-input" />
-                      <span class="text-muted-foreground">{{ brand.label }}</span>
-                    </label>
-                  </div>
-                </div>
-                <div>
-                  <label class="mb-1.5 block text-sm font-semibold text-foreground">{{ t('productDetail.pickTypeLabel') }}</label>
-                  <div class="space-y-1.5">
-                    <label v-for="type in pickTypeOptions" :key="type.value" class="flex cursor-pointer items-center gap-2 text-sm">
-                      <input v-model="pickCardTypes" type="checkbox" :value="type.value" class="h-4 w-4 rounded border-input" />
-                      <span class="text-muted-foreground">{{ type.label }}</span>
-                    </label>
-                  </div>
+              <!-- 品牌 chips -->
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-foreground">{{ t('productDetail.pickBrandLabel') }}</label>
+                <div class="flex flex-wrap gap-2.5">
+                  <button
+                    v-for="brand in pickBrandOptions"
+                    :key="brand.value"
+                    type="button"
+                    class="rounded-sm border-2 px-4 py-1.5 text-sm font-semibold transition-all"
+                    :class="pickBrands.includes(brand.value)
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-hairline-strong bg-card text-foreground hover:border-primary/40'"
+                    @click="togglePickBrand(brand.value)"
+                  >
+                    {{ brand.label }}
+                  </button>
                 </div>
               </div>
 
+              <!-- 种类 chips -->
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-foreground">{{ t('productDetail.pickTypeLabel') }}</label>
+                <div class="flex flex-wrap gap-2.5">
+                  <button
+                    v-for="type in pickTypeOptions"
+                    :key="type.value"
+                    type="button"
+                    class="rounded-sm border-2 px-4 py-1.5 text-sm font-semibold transition-all"
+                    :class="pickCardTypes.includes(type.value)
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-hairline-strong bg-card text-foreground hover:border-primary/40'"
+                    @click="togglePickType(type.value)"
+                  >
+                    {{ type.label }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- 当前所选 -->
+              <div class="rounded-md bg-muted/50 px-3.5 py-2.5 text-[13px]">
+                <span class="text-muted-foreground">{{ t('productDetail.pickSelectionLabel') }}：</span>
+                <span class="font-semibold text-foreground">{{ pickSelectionSummary || t('productDetail.pickSelectionEmpty') }}</span>
+              </div>
+
+              <!-- 加价 -->
               <div v-if="pickUnitSurcharge > 0" class="flex flex-wrap items-end gap-x-8 gap-y-2">
                 <div>
                   <div class="text-xs text-muted-foreground">{{ t('productDetail.pickUnitPrice') }}</div>
@@ -375,8 +390,9 @@ const {
   loading, product, relatedPosts, currentImage, selectedSkuId, quantity, purchaseWarning,
   activeSkus, selectedSku,
   cardCheckEnabled, cardCheckPlainPrice, cardCheckCheckedPrice,
-  pickEnabled, pickCountry, pickHeadEnabled, pickBrands, pickCardTypes, pickStockLoading,
-  pickBrandOptions, pickTypeOptions, availableCountries, pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
+  pickEnabled, pickCountry, pickBrands, pickCardTypes, pickStockLoading,
+  pickBrandOptions, pickTypeOptions, togglePickBrand, togglePickType, pickSelectionSummary,
+  availableCountries, pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
   selectedSkuMemberPrice, hasMemberPrice,
   hasSelectedSkuWholesalePrice, selectedSkuWholesaleFinalIsMember, selectedSkuWholesaleFinalPrice,
   selectedSkuWholesaleRules,
