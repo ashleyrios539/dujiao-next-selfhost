@@ -457,7 +457,7 @@ server {
     listen 80;
     server_name $DOMAIN;
 
-    client_max_body_size 20m;
+    client_max_body_size 200m;
 
     location / {
         proxy_pass http://127.0.0.1:$SERVER_PORT;

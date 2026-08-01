@@ -575,7 +575,7 @@ export const adminAPI = {
   backfillMemberLevels: () => api.post('/admin/member-levels/backfill'),
   createCardSecretBatch: (data: { product_id: number; sku_id?: number; name?: string; secrets: string[]; batch_no?: string; note?: string; deduplicate?: boolean }) => api.post('/admin/card-secrets/batch', data),
   importCardSecretCSV: (formData: FormData) =>
-    api.post('/admin/card-secrets/import', formData),
+    api.post('/admin/card-secrets/import', formData, { timeout: 300000 }),
   getCardSecrets: (params?: Record<string, unknown>) => api.get('/admin/card-secrets', { params }),
   updateCardSecret: (id: number, data: Partial<AdminCardSecret>) => api.put(`/admin/card-secrets/${id}`, data),
   batchUpdateCardSecretStatus: (data: AdminBatchCardSecretStatusPayload) =>
@@ -589,7 +589,7 @@ export const adminAPI = {
   getCardSecretStats: (params?: Record<string, unknown>) => api.get('/admin/card-secrets/stats', { params }),
   getCardSecretBatches: (params?: Record<string, unknown>) => api.get('/admin/card-secrets/batches', { params }),
   getCardSecretTemplate: () => api.get('/admin/card-secrets/template'),
-  importCardBins: (formData: FormData) => api.post('/admin/card-bins/import', formData),
+  importCardBins: (formData: FormData) => api.post('/admin/card-bins/import', formData, { timeout: 300000 }),
   getCardBinStats: () => api.get('/admin/card-bins/stats'),
   getCardBins: (params?: Record<string, unknown>) => api.get('/admin/card-bins', { params }),
   clearCardBins: () => api.post('/admin/card-bins/clear'),

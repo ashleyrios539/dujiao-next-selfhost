@@ -33,6 +33,7 @@ interface RequestOptions {
   headers?: Record<string, string>
   blob?: boolean
   data?: any
+  timeout?: number
   [key: string]: any
 }
 
@@ -118,7 +119,8 @@ async function request(method: string, path: string, bodyOrOptions?: any, option
   }
 
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeout)
+  const requestTimeout = typeof opts.timeout === 'number' && opts.timeout > 0 ? opts.timeout : timeout
+  const timer = setTimeout(() => controller.abort(), requestTimeout)
 
   let response: Response
   try {
