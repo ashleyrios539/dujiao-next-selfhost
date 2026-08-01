@@ -28,23 +28,26 @@ func (s *Service) InvalidateCallbackRoutesCache() {
 }
 
 // GetCallbackRoutesCached returns custom callback routes from the bounded
-// settings cache, loading them from the store on a miss.
+// settings cache, loading them from the store on a miss. The load happens
+// WITHOUT holding the global write lock: a blocking DB read while holding it
+// would wedge every request that needs the cache (they take the read lock first).
 func (s *Service) GetCallbackRoutesCached() *settingsintegration.CallbackRoutesSetting {
 	callbackRoutesCache.mu.RLock()
-	if callbackRoutesCache.loaded && time.Now().Before(callbackRoutesCache.expires) {
-		routes := callbackRoutesCache.routes
-		callbackRoutesCache.mu.RUnlock()
+	routes := callbackRoutesCache.routes
+	loaded := callbackRoutesCache.loaded
+	expires := callbackRoutesCache.expires
+	callbackRoutesCache.mu.RUnlock()
+	if loaded && time.Now().Before(expires) {
 		return routes
 	}
-	callbackRoutesCache.mu.RUnlock()
+
+	routes = s.GetCallbackRoutes()
 
 	callbackRoutesCache.mu.Lock()
 	defer callbackRoutesCache.mu.Unlock()
 	if callbackRoutesCache.loaded && time.Now().Before(callbackRoutesCache.expires) {
 		return callbackRoutesCache.routes
 	}
-
-	routes := s.GetCallbackRoutes()
 	callbackRoutesCache.routes = routes
 	callbackRoutesCache.loaded = true
 	callbackRoutesCache.expires = time.Now().Add(callbackRoutesCacheTTL)

@@ -84,23 +84,28 @@ func (s *Service) CreateCardSecretBatch(input CreateCardSecretBatchInput) (*card
 	if s.transactions == nil {
 		return nil, 0, ErrBatchCreateFailed
 	}
+	items := make([]cardsecretdomain.Secret, 0, len(normalized))
+	for _, secret := range normalized {
+		items = append(items, cardsecretdomain.Secret{
+			ProductID: input.ProductID,
+			SKUID:     sku.ID,
+			Secret:    secret,
+			Status:    cardsecretdomain.StatusAvailable,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	}
+	// 在事务外标注 BIN 属性：annotateCardSecrets 走独立连接查 card_bins，
+	// 若在事务内调用会与 SQLite MaxOpenConns=1 的单一连接形成自死锁。
+	s.annotateCardSecrets(items)
+
 	err = s.transactions.Transaction(func(secretRepo cardsecretcontract.Repository, batchRepo cardsecretcontract.BatchRepository) error {
 		if err := batchRepo.Create(batch); err != nil {
 			return ErrBatchCreateFailed
 		}
-		items := make([]cardsecretdomain.Secret, 0, len(normalized))
-		for _, secret := range normalized {
-			items = append(items, cardsecretdomain.Secret{
-				ProductID: input.ProductID,
-				SKUID:     sku.ID,
-				BatchID:   &batch.ID,
-				Secret:    secret,
-				Status:    cardsecretdomain.StatusAvailable,
-				CreatedAt: now,
-				UpdatedAt: now,
-			})
+		for i := range items {
+			items[i].BatchID = &batch.ID
 		}
-		s.annotateCardSecrets(items)
 		if err := secretRepo.CreateBatch(items); err != nil {
 			return ErrCreateFailed
 		}
