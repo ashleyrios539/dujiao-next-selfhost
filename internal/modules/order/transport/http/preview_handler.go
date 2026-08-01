@@ -13,6 +13,7 @@ import (
 	productdomain "github.com/dujiao-next/internal/modules/catalog/product/domain"
 	"github.com/dujiao-next/internal/modules/catalog/product/manualform"
 	couponcontract "github.com/dujiao-next/internal/modules/coupon/contract"
+	orderapp "github.com/dujiao-next/internal/modules/order/application"
 	promotioncontract "github.com/dujiao-next/internal/modules/promotion/contract"
 	resellermodule "github.com/dujiao-next/internal/modules/reseller/contract"
 	"github.com/dujiao-next/internal/platform/http/ginutil"
@@ -384,6 +385,13 @@ var userOrderCommonErrorRules = []mappedError{
 	{target: manualform.ErrFieldInvalid, code: response.CodeBadRequest, key: "error.manual_form_field_invalid"},
 	{target: manualform.ErrTypeInvalid, code: response.CodeBadRequest, key: "error.manual_form_type_invalid"},
 	{target: manualform.ErrOptionInvalid, code: response.CodeBadRequest, key: "error.manual_form_option_invalid"},
+	{target: orderapp.ErrProductPickNotSupported, code: response.CodeBadRequest, key: "error.product_pick_not_supported"},
+	{target: orderapp.ErrProductPickModeRequired, code: response.CodeBadRequest, key: "error.product_pick_mode_required"},
+	{target: orderapp.ErrProductPickCountryInvalid, code: response.CodeBadRequest, key: "error.product_pick_country_invalid"},
+	{target: orderapp.ErrProductPickBrandInvalid, code: response.CodeBadRequest, key: "error.product_pick_brand_invalid"},
+	{target: orderapp.ErrProductPickTypeInvalid, code: response.CodeBadRequest, key: "error.product_pick_type_invalid"},
+	{target: orderapp.ErrProductPickBinInvalid, code: response.CodeBadRequest, key: "error.product_pick_bin_invalid"},
+	{target: orderapp.ErrProductPickBinConflict, code: response.CodeBadRequest, key: "error.product_pick_bin_conflict"},
 }
 
 var userOrderPreviewExtraErrorRules = []mappedError{
@@ -418,6 +426,13 @@ var guestOrderCommonErrorRules = []mappedError{
 	{target: manualform.ErrFieldInvalid, code: response.CodeBadRequest, key: "error.manual_form_field_invalid"},
 	{target: manualform.ErrTypeInvalid, code: response.CodeBadRequest, key: "error.manual_form_type_invalid"},
 	{target: manualform.ErrOptionInvalid, code: response.CodeBadRequest, key: "error.manual_form_option_invalid"},
+	{target: orderapp.ErrProductPickNotSupported, code: response.CodeBadRequest, key: "error.product_pick_not_supported"},
+	{target: orderapp.ErrProductPickModeRequired, code: response.CodeBadRequest, key: "error.product_pick_mode_required"},
+	{target: orderapp.ErrProductPickCountryInvalid, code: response.CodeBadRequest, key: "error.product_pick_country_invalid"},
+	{target: orderapp.ErrProductPickBrandInvalid, code: response.CodeBadRequest, key: "error.product_pick_brand_invalid"},
+	{target: orderapp.ErrProductPickTypeInvalid, code: response.CodeBadRequest, key: "error.product_pick_type_invalid"},
+	{target: orderapp.ErrProductPickBinInvalid, code: response.CodeBadRequest, key: "error.product_pick_bin_invalid"},
+	{target: orderapp.ErrProductPickBinConflict, code: response.CodeBadRequest, key: "error.product_pick_bin_conflict"},
 }
 
 var guestOrderPreviewExtraErrorRules = []mappedError{
