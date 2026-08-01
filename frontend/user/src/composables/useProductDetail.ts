@@ -69,6 +69,7 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
   const currentImage = ref<string>('')
   const selectedSkuId = ref(0)
   const quantity = ref(1)
+  const cardCheckEnabled = ref(false)
   const purchaseWarning = ref('')
 
   const activeSkus = computed(() => {
@@ -408,6 +409,8 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     fulfillmentType: product.value.fulfillment_type,
     manualFormSchema: product.value.manual_form_schema || {},
     paymentChannelIds: Array.isArray(product.value.payment_channel_ids) && product.value.payment_channel_ids.length > 0 ? product.value.payment_channel_ids : undefined,
+    cardCheckEnabled: cardCheckEnabled.value,
+    cardCheckFee: String(product.value?.card_check_fee || '0'),
     quantity: quantity.value,
   })
 
@@ -661,6 +664,14 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     }
   })
 
+  const cardCheckFeeAmount = computed<number>(() => Number(product.value?.card_check_fee || 0))
+  const cardCheckPlainPrice = computed<number>(() => {
+    const sku = selectedSku.value
+    const raw = sku ? sku.price_amount : product.value?.price_amount
+    return Number(raw || 0)
+  })
+  const cardCheckCheckedPrice = computed<number>(() => cardCheckPlainPrice.value + cardCheckFeeAmount.value)
+
   onUnmounted(() => {
     debouncedLoadProduct.cancel()
   })
@@ -677,6 +688,8 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     // 状态
     loading, product, relatedPosts, currentImage, selectedSkuId, quantity, purchaseWarning,
     activeSkus, selectedSku,
+    // 测活
+    cardCheckEnabled, cardCheckFeeAmount, cardCheckPlainPrice, cardCheckCheckedPrice,
     // 价格计算
     selectedSkuMemberPrice, hasMemberPrice,
     hasSelectedSkuWholesalePrice, selectedSkuWholesaleFinalIsMember, selectedSkuWholesaleFinalPrice,

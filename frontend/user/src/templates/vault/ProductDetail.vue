@@ -165,6 +165,31 @@
             </div>
           </div>
 
+          <!-- 测活选项：用户自选是否测活，仅展示测活/不测活两档价格 -->
+          <div v-if="product.card_check_enabled" class="my-5 rounded-xl border-2 border-hairline-strong bg-card/60 px-4 py-4">
+            <label class="flex cursor-pointer items-center justify-between gap-3">
+              <span class="flex items-center gap-2">
+                <input
+                  id="card_check_enabled"
+                  v-model="cardCheckEnabled"
+                  type="checkbox"
+                  class="h-4 w-4 shrink-0 rounded border-input"
+                />
+                <span class="text-sm font-semibold">{{ t('productDetail.cardCheckLabel') }}</span>
+              </span>
+            </label>
+            <div class="mt-3 flex flex-wrap items-end gap-x-8 gap-y-2">
+              <div>
+                <div class="text-xs text-muted-foreground">{{ t('productDetail.cardCheckPlainPrice') }}</div>
+                <div class="text-lg font-bold text-muted-foreground">{{ formatPrice(cardCheckPlainPrice, siteCurrency) }}</div>
+              </div>
+              <div>
+                <div class="text-xs text-muted-foreground">{{ t('productDetail.cardCheckCheckedPrice') }}</div>
+                <div class="text-lg font-bold text-primary">{{ formatPrice(cardCheckCheckedPrice, siteCurrency) }}</div>
+              </div>
+            </div>
+          </div>
+
           <!-- 提示 -->
           <div v-if="cannotPurchaseReason" class="my-3.5 rounded-sm bg-destructive/10 px-3.5 py-2.5 text-sm font-semibold text-destructive">{{ cannotPurchaseReason }}</div>
           <div v-if="purchaseWarning" class="my-3.5 rounded-sm bg-warning/10 px-3.5 py-2.5 text-sm font-semibold text-warning">{{ purchaseWarning }}</div>
@@ -286,6 +311,7 @@ const {
   formatPromotionRule, formatWholesaleTier, formatRelatedPostDate, normalizeSkuId,
   loading, product, relatedPosts, currentImage, selectedSkuId, quantity, purchaseWarning,
   activeSkus, selectedSku,
+  cardCheckEnabled, cardCheckPlainPrice, cardCheckCheckedPrice,
   selectedSkuMemberPrice, hasMemberPrice,
   hasSelectedSkuWholesalePrice, selectedSkuWholesaleFinalIsMember, selectedSkuWholesaleFinalPrice,
   selectedSkuWholesaleRules,

@@ -34,6 +34,8 @@ type Product struct {
 	StockRangeMax        *int              `json:"stock_range_max,omitempty"`
 	StockQuantityHidden  bool              `json:"stock_quantity_hidden"`
 	FulfillmentType      string            `json:"fulfillment_type"`
+	CardCheckEnabled     bool              `json:"card_check_enabled"`
+	CardCheckFee         money.Amount      `json:"card_check_fee"`
 	ManualFormSchema     jsonmap.JSON      `json:"manual_form_schema"`
 	ManualStockAvailable int               `json:"manual_stock_available"`
 	AutoStockAvailable   int64             `json:"auto_stock_available"`

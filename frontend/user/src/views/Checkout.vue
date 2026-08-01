@@ -59,6 +59,11 @@
                     >
                       {{ itemStockHint(item) }}
                     </div>
+                    <div v-if="checkoutItemCardCheckEnabled(item)" class="mt-2">
+                      <span class="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                        {{ t('checkout.cardCheckEnabledBadge') }}
+                      </span>
+                    </div>
                     <div class="mt-2 flex flex-wrap items-baseline gap-3">
                       <span
                         class="inline-flex items-baseline whitespace-nowrap"
@@ -331,6 +336,7 @@ const {
   isBuyNowMode, cartItems, totalItems, cartItemKey, checkoutItemImage, itemSkuDisplay,
   itemStockExceeded, itemStockHint,
   checkoutItemCurrency, checkoutItemPriceParts, checkoutItemOriginalPriceParts, checkoutItemHasPriceDiscount,
+  checkoutItemCardCheckEnabled,
   manualFormProducts, manualFormData, submitAttempted, getManualFieldLabel, getManualFieldPlaceholder, manualFieldError,
   couponCode, isResellerTenant,
   checkoutMode, guestEmail, guestPassword, guestEmailValid,

@@ -30,6 +30,7 @@ type OrderItem struct {
 	PromotionID                  *uint             `gorm:"index" json:"promotion_id,omitempty"`                                    // 活动价ID
 	PromotionName                string            `gorm:"-" json:"promotion_name,omitempty"`                                      // 活动价名称
 	FulfillmentType              string            `gorm:"not null" json:"fulfillment_type"`                                       // 交付类型
+	CardCheckEnabled             bool              `gorm:"not null;default:false" json:"card_check_enabled"`                       // 用户是否选择测活
 	ManualFormSchemaSnapshotJSON jsonmap.JSON      `gorm:"type:json" json:"manual_form_schema_snapshot"`                           // 人工交付表单 schema 快照
 	ManualFormSubmissionJSON     jsonmap.JSON      `gorm:"type:json" json:"manual_form_submission"`                                // 人工交付表单提交值
 	InstructionsJSON             jsonmap.JSON      `gorm:"type:json" json:"instructions"`                                          // 交付后使用说明快照（多语言）

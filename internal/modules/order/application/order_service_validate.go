@@ -116,9 +116,15 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 		productCurrency := currency
 		basePrice := sku.PriceAmount.Decimal.Round(2)
 
+		// 测活加价：用户勾选测活且商品支持时，把加价并入基础单价（再参与后续优惠计算）。
+		cardCheckEnabled := item.CardCheckEnabled && product.CardCheckEnabled
+		if cardCheckEnabled && product.CardCheckFee.Decimal.IsPositive() {
+			basePrice = basePrice.Add(product.CardCheckFee.Decimal).Round(2)
+		}
+
 		// 1. 计算活动价
 		priceCarrier := *product
-		priceCarrier.PriceAmount = sku.PriceAmount
+		priceCarrier.PriceAmount = money.FromDecimal(basePrice)
 		var promotion *promotiondomain.Promotion
 		promoUnitPriceAmount := basePrice
 		if promotionService != nil {
@@ -254,6 +260,7 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 			WholesaleDiscount:            money.FromDecimal(wholesaleDiscount),
 			PromotionID:                  promotionID,
 			FulfillmentType:              fulfillmentType,
+			CardCheckEnabled:             cardCheckEnabled,
 			ManualFormSchemaSnapshotJSON: manualSchemaSnapshot,
 			ManualFormSubmissionJSON:     manualSubmission,
 			InstructionsJSON:             product.InstructionsJSON,
@@ -415,15 +422,19 @@ func mergeCreateOrderItems(items []CreateOrderItem) ([]CreateOrderItem, error) {
 			return nil, ErrInvalidOrderItem
 		}
 		key := orderdomain.ItemKey(item.ProductID, item.SKUID)
+		if item.CardCheckEnabled {
+			key += ":check"
+		}
 		if idx, ok := indexMap[key]; ok {
 			merged[idx].Quantity += item.Quantity
 			continue
 		}
 		indexMap[key] = len(merged)
 		merged = append(merged, CreateOrderItem{
-			ProductID: item.ProductID,
-			SKUID:     item.SKUID,
-			Quantity:  item.Quantity,
+			ProductID:       item.ProductID,
+			SKUID:           item.SKUID,
+			Quantity:        item.Quantity,
+			CardCheckEnabled: item.CardCheckEnabled,
 		})
 	}
 	return merged, nil

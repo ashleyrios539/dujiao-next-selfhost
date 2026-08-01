@@ -94,6 +94,8 @@ func (v *publicProductView) toProductResp() productpresenter.Product {
 		StockRangeMax:        productDisplay.RangeMax,
 		StockQuantityHidden:  productDisplay.QuantityHidden,
 		FulfillmentType:      v.Product.FulfillmentType,
+		CardCheckEnabled:     v.Product.CardCheckEnabled,
+		CardCheckFee:         v.Product.CardCheckFee,
 		ManualFormSchema:     v.Product.ManualFormSchemaJSON,
 		ManualStockAvailable: domaincatalog.MaskStockInt(mode, v.ManualStockAvailable),
 		AutoStockAvailable:   domaincatalog.MaskStockInt64(mode, v.AutoStockAvailable),

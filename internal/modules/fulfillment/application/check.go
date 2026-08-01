@@ -16,29 +16,6 @@ type CardChecker interface {
 	CheckCards(ctx context.Context, kami, interfaceID, country string, cards []cardcheck.Card, opts cardcheck.Options) []cardcheck.Result
 }
 
-// checkEnabledProducts 返回订单中需要交付前测活的商品 ID 集合。
-func (s *Service) checkEnabledProducts(items []orderdomain.OrderItem) (map[uint]bool, error) {
-	ids := make([]uint, 0, len(items))
-	seen := make(map[uint]bool)
-	for _, item := range items {
-		if !seen[item.ProductID] {
-			seen[item.ProductID] = true
-			ids = append(ids, item.ProductID)
-		}
-	}
-	products, err := s.productStore.ListByIDs(ids)
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[uint]bool)
-	for _, product := range products {
-		if product.CardCheckEnabled {
-			result[product.ID] = true
-		}
-	}
-	return result, nil
-}
-
 // runCardCheck 对订单内启用测活的商品执行交付前测活。
 //
 // 返回：

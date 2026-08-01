@@ -107,6 +107,8 @@ type CreateProductInput struct {
 	SKUs                []ProductSKUInput
 	PaymentChannelIDs   []uint
 	IsAffiliateEnabled  *bool
+	CardCheckEnabled    *bool
+	CardCheckFee        *decimal.Decimal
 	IsActive            *bool
 	SortOrder           int
 }

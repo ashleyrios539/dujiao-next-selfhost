@@ -227,14 +227,23 @@ type CreateProductRequest struct {
 	SKUs                []ProductSKURequest      `json:"skus"`
 	PaymentChannelIDs   []uint                   `json:"payment_channel_ids"`
 	IsAffiliateEnabled  *bool                    `json:"is_affiliate_enabled"`
+	CardCheckEnabled    *bool                    `json:"card_check_enabled"`
+	CardCheckFee        *float64                 `json:"card_check_fee"`
 	IsActive            *bool                    `json:"is_active"`
 	SortOrder           int                      `json:"sort_order"`
 }
 
 // toWholesalePriceInputs 透传「是否提供」语义：请求未携带 wholesale_prices 时返回 nil
 // （Update 保留原配置），携带（含空数组）时返回非 nil 指针以整体覆盖。
-func toWholesalePriceInputs(items *[]WholesalePriceRequest) *[]productdomain.WholesalePriceInput {
-	if items == nil {
+func toDecimalPtr(raw *float64) *decimal.Decimal {
+	if raw == nil {
+		return nil
+	}
+	value := decimal.NewFromFloat(*raw)
+	return &value
+}
+
+func toWholesalePriceInputs(items *[]WholesalePriceRequest) *[]productdomain.WholesalePriceInput {	if items == nil {
 		return nil
 	}
 	result := make([]productdomain.WholesalePriceInput, 0, len(*items))
@@ -300,6 +309,8 @@ func (h *AdminProductHandler) CreateProduct(c *gin.Context) {
 		SKUs:                 toProductSKUInputs(req.SKUs),
 		PaymentChannelIDs:    req.PaymentChannelIDs,
 		IsAffiliateEnabled:   req.IsAffiliateEnabled,
+		CardCheckEnabled:     req.CardCheckEnabled,
+		CardCheckFee:         toDecimalPtr(req.CardCheckFee),
 		IsActive:             req.IsActive,
 		SortOrder:            req.SortOrder,
 	})
@@ -392,6 +403,8 @@ func (h *AdminProductHandler) UpdateProduct(c *gin.Context) {
 		SKUs:                 toProductSKUInputs(req.SKUs),
 		PaymentChannelIDs:    req.PaymentChannelIDs,
 		IsAffiliateEnabled:   req.IsAffiliateEnabled,
+		CardCheckEnabled:     req.CardCheckEnabled,
+		CardCheckFee:         toDecimalPtr(req.CardCheckFee),
 		IsActive:             req.IsActive,
 		SortOrder:            req.SortOrder,
 	})
@@ -457,10 +470,11 @@ func (h *AdminProductHandler) UpdateProduct(c *gin.Context) {
 
 // QuickUpdateProductRequest 快速更新商品请求
 type QuickUpdateProductRequest struct {
-	IsActive        *bool `json:"is_active"`
-	SortOrder       *int  `json:"sort_order"`
-	CategoryID      *uint `json:"category_id"`
-	CardCheckEnabled *bool `json:"card_check_enabled"`
+	IsActive        *bool    `json:"is_active"`
+	SortOrder       *int     `json:"sort_order"`
+	CategoryID      *uint    `json:"category_id"`
+	CardCheckEnabled *bool   `json:"card_check_enabled"`
+	CardCheckFee    *float64 `json:"card_check_fee"`
 }
 
 type UpdateWholesalePricesRequest struct {
@@ -521,6 +535,9 @@ func (h *AdminProductHandler) QuickUpdateProduct(c *gin.Context) {
 	}
 	if req.CardCheckEnabled != nil {
 		fields["card_check_enabled"] = *req.CardCheckEnabled
+	}
+	if req.CardCheckFee != nil {
+		fields["card_check_fee"] = *req.CardCheckFee
 	}
 	if len(fields) == 0 {
 		ginutil.RespondError(c, response.CodeBadRequest, "error.bad_request", nil)

@@ -170,6 +170,7 @@ type CreateOrderItem struct {
 	SKUID           uint
 	Quantity        int
 	FulfillmentType string
+	CardCheckEnabled bool
 }
 
 // childOrderPlan 子订单计划数据
@@ -316,6 +317,7 @@ type OrderPreviewItem struct {
 	PromotionDiscount  money.Amount      `json:"promotion_discount_amount"`
 	WholesaleDiscount  money.Amount      `json:"wholesale_discount_amount"`
 	FulfillmentType    string            `json:"fulfillment_type"`
+	CardCheckEnabled   bool              `json:"card_check_enabled"`
 }
 
 type orderBuildResult struct {
@@ -400,6 +402,7 @@ func (s *OrderService) previewOrder(input orderCreateParams) (*OrderPreview, err
 			PromotionDiscount:  item.PromotionDiscount,
 			WholesaleDiscount:  item.WholesaleDiscount,
 			FulfillmentType:    item.FulfillmentType,
+			CardCheckEnabled:   item.CardCheckEnabled,
 		})
 	}
 	return &OrderPreview{

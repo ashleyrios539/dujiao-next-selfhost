@@ -341,7 +341,7 @@ export const adminAPI = {
   getProduct: (id: number) => api.get(`/admin/products/${id}`),
   createProduct: (data: Partial<AdminProduct>) => api.post('/admin/products', data),
   updateProduct: (id: number, data: Partial<AdminProduct>) => api.put(`/admin/products/${id}`, data),
-  patchProduct: (id: number, data: { is_active?: boolean; sort_order?: number; category_id?: number }) => api.patch(`/admin/products/${id}`, data),
+  patchProduct: (id: number, data: { is_active?: boolean; sort_order?: number; category_id?: number; card_check_enabled?: boolean; card_check_fee?: number }) => api.patch(`/admin/products/${id}`, data),
   updateProductWholesalePrices: (id: number, data: { wholesale_prices: AdminWholesalePrice[] }) =>
     api.patch(`/admin/products/${id}/wholesale-prices`, data),
   deleteProduct: (id: number) => api.delete(`/admin/products/${id}`),

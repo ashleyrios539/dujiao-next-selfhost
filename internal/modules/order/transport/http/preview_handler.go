@@ -79,6 +79,7 @@ type OrderItemRequest struct {
 	SKUID           uint   `json:"sku_id"`
 	Quantity        int    `json:"quantity" binding:"required"`
 	FulfillmentType string `json:"fulfillment_type"`
+	CardCheckEnabled *bool `json:"card_check_enabled"`
 }
 
 // CreateOrderRequest 用户订单预览/创建请求体（preview 使用）。
@@ -108,6 +109,7 @@ type CreateOrderItem struct {
 	SKUID           uint
 	Quantity        int
 	FulfillmentType string
+	CardCheckEnabled bool
 }
 
 // CreateOrderInput 用户订单预览输入。
@@ -165,6 +167,7 @@ type OrderPreviewItem struct {
 	PromotionDiscount  money.Amount      `json:"promotion_discount_amount"`
 	WholesaleDiscount  money.Amount      `json:"wholesale_discount_amount"`
 	FulfillmentType    string            `json:"fulfillment_type"`
+	CardCheckEnabled   bool              `json:"card_check_enabled"`
 }
 
 // OrderPreviewService 订单金额预览端口。
@@ -245,7 +248,14 @@ func (h *PreviewHandler) PreviewGuestOrder(c *gin.Context) {
 func mapOrderItems(items []OrderItemRequest) []CreateOrderItem {
 	out := make([]CreateOrderItem, 0, len(items))
 	for _, item := range items {
-		out = append(out, CreateOrderItem(item))
+		check := item.CardCheckEnabled != nil && *item.CardCheckEnabled
+		out = append(out, CreateOrderItem{
+			ProductID:       item.ProductID,
+			SKUID:           item.SKUID,
+			Quantity:        item.Quantity,
+			FulfillmentType: item.FulfillmentType,
+			CardCheckEnabled: check,
+		})
 	}
 	return out
 }

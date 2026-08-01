@@ -653,6 +653,7 @@ export function useCheckout() {
     sku_id: normalizeSkuId(item.skuId) || undefined,
     quantity: item.quantity,
     fulfillment_type: item.fulfillmentType || undefined,
+    card_check_enabled: Boolean(item.cardCheckEnabled) || undefined,
   }))
 
   const buildOrderPayload = () => ({
@@ -974,6 +975,14 @@ export function useCheckout() {
 
   const checkoutItemPreview = (item: CartItem) => previewItemsByKey.value.get(cartItemKey(item))
 
+  const checkoutItemCardCheckEnabled = (item: CartItem) => {
+    const previewItem = checkoutItemPreview(item)
+    if (previewItem && typeof previewItem.card_check_enabled === 'boolean') {
+      return previewItem.card_check_enabled
+    }
+    return Boolean(item.cardCheckEnabled)
+  }
+
   const checkoutItemOriginalCents = (item: CartItem) => {
     const previewItem = checkoutItemPreview(item)
     const previewOriginalCents = amountToCents(previewItem?.original_total_price)
@@ -1120,6 +1129,7 @@ export function useCheckout() {
     checkoutItemPriceParts,
     checkoutItemOriginalPriceParts,
     checkoutItemHasPriceDiscount,
+    checkoutItemCardCheckEnabled,
     // manual form
     manualFormProducts,
     manualFormData,

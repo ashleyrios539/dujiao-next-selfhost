@@ -31,6 +31,8 @@ export interface CartItem {
     fulfillmentType?: string
     manualFormSchema?: any
     paymentChannelIds?: number[]
+    cardCheckEnabled?: boolean
+    cardCheckFee?: string
 }
 
 const normalizeSkuId = (value: unknown) => {
@@ -40,7 +42,7 @@ const normalizeSkuId = (value: unknown) => {
     return integerValue > 0 ? integerValue : 0
 }
 
-const cartIdentity = (item: Pick<CartItem, 'productId' | 'skuId'>) => `${item.productId}:${normalizeSkuId(item.skuId)}`
+const cartIdentity = (item: Pick<CartItem, 'productId' | 'skuId' | 'cardCheckEnabled'>) => `${item.productId}:${normalizeSkuId(item.skuId)}:${item.cardCheckEnabled ? 1 : 0}`
 
 const normalizeOptionalStockNumber = (value: unknown, allowUnlimited = false): number | undefined => {
     if (value === undefined || value === null || value === '') return undefined
@@ -111,6 +113,8 @@ const loadCartItems = (): CartItem[] => {
                     skuStockQuantityHidden: normalizeOptionalBoolean(row.skuStockQuantityHidden ?? row.sku_stock_quantity_hidden),
                     skuStockEnforced: normalizeOptionalBoolean(row.skuStockEnforced ?? row.sku_stock_enforced),
                     skuStockSnapshotAt: normalizeOptionalString(row.skuStockSnapshotAt ?? row.sku_stock_snapshot_at),
+                    cardCheckEnabled: normalizeOptionalBoolean(row.cardCheckEnabled ?? row.card_check_enabled),
+                    cardCheckFee: normalizeOptionalString(row.cardCheckFee ?? row.card_check_fee),
                     minPurchaseQuantity: normalizeOptionalLimitNumber(row.minPurchaseQuantity ?? row.min_purchase_quantity),
                     maxPurchaseQuantity: normalizeOptionalLimitNumber(row.maxPurchaseQuantity ?? row.max_purchase_quantity),
                 } as CartItem
@@ -149,6 +153,8 @@ export const useCartStore = defineStore('cart', () => {
             skuStockQuantityHidden: normalizeOptionalBoolean(item.skuStockQuantityHidden),
             skuStockEnforced: normalizeOptionalBoolean(item.skuStockEnforced),
             skuStockSnapshotAt: normalizeOptionalString(item.skuStockSnapshotAt) || new Date().toISOString(),
+            cardCheckEnabled: normalizeOptionalBoolean(item.cardCheckEnabled),
+            cardCheckFee: normalizeOptionalString(item.cardCheckFee),
             minPurchaseQuantity: normalizeOptionalLimitNumber(item.minPurchaseQuantity),
             maxPurchaseQuantity: normalizeOptionalLimitNumber(item.maxPurchaseQuantity),
         }
@@ -183,6 +189,8 @@ export const useCartStore = defineStore('cart', () => {
             existing.skuStockQuantityHidden = normalizedItem.skuStockQuantityHidden
             existing.skuStockEnforced = normalizedItem.skuStockEnforced
             existing.skuStockSnapshotAt = normalizedItem.skuStockSnapshotAt
+            existing.cardCheckEnabled = normalizedItem.cardCheckEnabled
+            existing.cardCheckFee = normalizedItem.cardCheckFee
         } else {
             items.value.push({
                 ...normalizedItem,

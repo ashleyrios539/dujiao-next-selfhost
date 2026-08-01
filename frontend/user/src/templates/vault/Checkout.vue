@@ -43,6 +43,9 @@
                 <div class="mt-0.5 text-[12.5px] text-muted-foreground">{{ t('checkout.quantityLabel') }}：{{ item.quantity }}</div>
                 <div v-if="itemSkuDisplay(item)" class="mt-0.5 text-[12.5px] text-muted-foreground">{{ t('checkout.skuLabel') }}：{{ itemSkuDisplay(item) }}</div>
                 <div v-if="itemStockHint(item)" class="mt-0.5 text-[12.5px]" :class="itemStockExceeded(item) ? 'text-warning' : 'text-muted-foreground'">{{ itemStockHint(item) }}</div>
+                <div v-if="checkoutItemCardCheckEnabled(item)" class="mt-1">
+                  <span class="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{{ t('checkout.cardCheckEnabledBadge') }}</span>
+                </div>
               </div>
               <div class="flex-none text-right">
                 <span class="inline-flex items-baseline font-bold" :class="checkoutItemHasPriceDiscount(item) ? 'text-primary' : 'text-foreground'">
@@ -215,6 +218,7 @@ const {
   userAuthStore, getLocalizedText, formatPrice, getImageUrl,
   isBuyNowMode, cartItems, totalItems, cartItemKey, checkoutItemImage, itemSkuDisplay,
   itemStockExceeded, itemStockHint,
+  checkoutItemCardCheckEnabled,
   checkoutItemCurrency, checkoutItemPriceParts, checkoutItemOriginalPriceParts, checkoutItemHasPriceDiscount,
   manualFormProducts, manualFormData, submitAttempted, getManualFieldLabel, getManualFieldPlaceholder, manualFieldError,
   couponCode, isResellerTenant,

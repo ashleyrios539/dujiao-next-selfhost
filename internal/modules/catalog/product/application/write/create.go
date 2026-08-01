@@ -14,9 +14,20 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// normalizeCardCheckFee 归一化测活加价金额（保留两位小数，负数归零）。
+func normalizeCardCheckFee(raw *decimal.Decimal) decimal.Decimal {
+	if raw == nil {
+		return decimal.Zero
+	}
+	normalized := raw.Round(2)
+	if normalized.LessThan(decimal.Zero) {
+		return decimal.Zero
+	}
+	return normalized
+}
+
 // Create 创建商品
-func (s *WriteService) Create(input CreateProductInput) (*productdomain.Product, error) {
-	if err := productdomain.ValidateCategoryAssignment(s.categories, input.CategoryID, 0, productcontract.ErrProductCategoryInvalid); err != nil {
+func (s *WriteService) Create(input CreateProductInput) (*productdomain.Product, error) {	if err := productdomain.ValidateCategoryAssignment(s.categories, input.CategoryID, 0, productcontract.ErrProductCategoryInvalid); err != nil {
 		return nil, err
 	}
 
@@ -120,6 +131,8 @@ func (s *WriteService) Create(input CreateProductInput) (*productdomain.Product,
 		ManualStockSold:      0,
 		PaymentChannelIDs:    productdomain.EncodePaymentChannelIDs(paymentChannelIDs),
 		IsAffiliateEnabled:   isAffiliateEnabled,
+		CardCheckEnabled:     input.CardCheckEnabled != nil && *input.CardCheckEnabled,
+		CardCheckFee:         money.FromDecimal(normalizeCardCheckFee(input.CardCheckFee)),
 		IsActive:             isActive,
 		SortOrder:            input.SortOrder,
 	}

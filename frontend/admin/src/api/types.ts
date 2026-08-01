@@ -75,6 +75,8 @@ export interface AdminProduct {
   manual_stock_sold: number
   payment_channel_ids: string
   is_affiliate_enabled: boolean
+  card_check_enabled: boolean
+  card_check_fee: number
   auto_stock_available: number
   auto_stock_total: number
   auto_stock_locked: number

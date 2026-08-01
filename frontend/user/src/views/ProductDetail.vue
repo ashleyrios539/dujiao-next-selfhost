@@ -288,6 +288,31 @@
                   </div>
                 </div>
 
+              <!-- 测活选项：用户自选是否测活，仅展示测活/不测活两档价格 -->
+              <div v-if="product.card_check_enabled" class="mb-8 rounded-xl border border-primary/20 bg-primary/5 px-4 py-4">
+                <label class="flex cursor-pointer items-center justify-between gap-3">
+                  <span class="flex items-center gap-2">
+                    <input
+                      id="card_check_enabled"
+                      v-model="cardCheckEnabled"
+                      type="checkbox"
+                      class="h-4 w-4 shrink-0 rounded border-input"
+                    />
+                    <span class="text-sm font-medium">{{ t('productDetail.cardCheckLabel') }}</span>
+                  </span>
+                </label>
+                <div class="mt-3 flex flex-wrap items-end gap-x-8 gap-y-2">
+                  <div>
+                    <div class="text-xs text-muted-foreground">{{ t('productDetail.cardCheckPlainPrice') }}</div>
+                    <div class="theme-price-lg text-muted-foreground">{{ formatPrice(cardCheckPlainPrice, siteCurrency) }}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-muted-foreground">{{ t('productDetail.cardCheckCheckedPrice') }}</div>
+                    <div class="theme-price-lg text-primary">{{ formatPrice(cardCheckCheckedPrice, siteCurrency) }}</div>
+                  </div>
+                </div>
+              </div>
+
               <!-- Purchase Actions (Desktop + original position) -->
               <div ref="purchaseActionsRef" class="mt-auto space-y-6">
                 <Alert v-if="cannotPurchaseReason" variant="destructive">
@@ -457,6 +482,7 @@ const {
   formatPromotionRule, formatWholesaleTier, formatRelatedPostDate, normalizeSkuId,
   loading, product, relatedPosts, currentImage, selectedSkuId, quantity, purchaseWarning,
   activeSkus, selectedSku,
+  cardCheckEnabled, cardCheckPlainPrice, cardCheckCheckedPrice,
   selectedSkuMemberPrice, hasMemberPrice,
   hasSelectedSkuWholesalePrice, selectedSkuWholesaleFinalIsMember, selectedSkuWholesaleFinalPrice,
   selectedSkuWholesaleRules,

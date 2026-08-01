@@ -160,6 +160,8 @@ const form = reactive({
   category_id: null as number | null,
   payment_channel_ids: [] as number[],
   is_affiliate_enabled: false,
+  card_check_enabled: false,
+  card_check_fee: 0,
   is_active: true,
   sort_order: 0,
   manual_form_schema: { fields: [] as ManualFormField[] },
@@ -502,6 +504,8 @@ const resetForm = () => {
     category_id: null,
     payment_channel_ids: [],
     is_affiliate_enabled: false,
+    card_check_enabled: false,
+    card_check_fee: 0,
     is_active: true,
     sort_order: 0,
     manual_form_schema: { fields: [] },
@@ -550,6 +554,8 @@ const populateForm = (product: AdminProduct) => {
     category_id: Number(product.category_id || 0) || null,
     payment_channel_ids: parsePaymentChannelIDs(product.payment_channel_ids),
     is_affiliate_enabled: Boolean(product.is_affiliate_enabled),
+    card_check_enabled: Boolean(product.card_check_enabled),
+    card_check_fee: Number(product.card_check_fee || 0),
     is_active: product.is_active ?? true,
     sort_order: Number(product.sort_order || 0),
     manual_form_schema: parseManualFormSchemaForEdit(product.manual_form_schema),
@@ -622,6 +628,8 @@ const handleSubmit = async () => {
       skus: normalizedSKUs,
       payment_channel_ids: form.payment_channel_ids.length > 0 ? form.payment_channel_ids : [],
       is_affiliate_enabled: form.is_affiliate_enabled,
+      card_check_enabled: form.card_check_enabled,
+      card_check_fee: Number(form.card_check_fee) || 0,
       is_active: form.is_active,
       sort_order: Number(form.sort_order) || 0,
       manual_form_schema: normalizeManualFormSchemaForSubmit(),
@@ -1049,6 +1057,20 @@ watch(
             <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.products.form.sortOrder') }}</label>
             <Input v-model.number="form.sort_order" type="number" placeholder="0" />
             <p class="mt-1 text-xs text-muted-foreground">{{ t('admin.products.form.sortTip') }}</p>
+          </div>
+
+          <div class="col-span-1 md:col-span-2 border-t border-border pt-4">
+            <div class="flex flex-wrap items-center gap-4">
+              <div class="inline-flex items-center gap-2">
+                <Switch id="card_check_enabled" v-model="form.card_check_enabled" />
+                <Label for="card_check_enabled" class="text-sm text-muted-foreground select-none">{{ t('admin.products.form.cardCheckEnabled') }}</Label>
+              </div>
+              <div v-if="form.card_check_enabled" class="flex items-center gap-2">
+                <label class="text-xs font-medium text-muted-foreground whitespace-nowrap">{{ t('admin.products.form.cardCheckFee') }}</label>
+                <Input v-model.number="form.card_check_fee" type="number" step="0.01" min="0" class="w-28" />
+              </div>
+            </div>
+            <p v-if="form.card_check_enabled" class="mt-1 text-xs text-muted-foreground">{{ t('admin.products.form.cardCheckFeeTip') }}</p>
           </div>
 
           <div class="col-span-1 md:col-span-2">

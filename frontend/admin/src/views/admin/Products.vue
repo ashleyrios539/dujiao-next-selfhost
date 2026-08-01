@@ -391,6 +391,18 @@ const toggleStatus = async (product: AdminProduct) => {
   }
 }
 
+const toggleCardCheck = async (product: AdminProduct) => {
+  const newValue = !product.card_check_enabled
+  try {
+    product.card_check_enabled = newValue
+    await adminAPI.patchProduct(product.id, { card_check_enabled: newValue })
+  } catch (err: any) {
+    product.card_check_enabled = !newValue
+    if (isNotifiedError(err)) return
+    notifyError(t('admin.products.errors.updateFailed', { message: err?.message || '' }))
+  }
+}
+
 const startEditSort = (product: AdminProduct) => {
   editingSortId.value = product.id
   editingSortValue.value = String(product.sort_order || 0)
@@ -590,17 +602,18 @@ watch(
             <TableHead class="px-6 py-3 min-w-[220px]">{{ t('admin.products.table.category') }}</TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.products.table.sort') }}</TableHead>
             <TableHead class="px-6 py-3">{{ t('admin.products.table.status') }}</TableHead>
+            <TableHead class="px-6 py-3">{{ t('admin.products.table.cardCheck') }}</TableHead>
             <TableHead class="px-6 py-3 text-right">{{ t('admin.products.table.action') }}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody class="divide-y divide-border">
           <TableRow v-if="loading">
-            <TableCell :colspan="8" class="p-0">
+            <TableCell :colspan="9" class="p-0">
               <TableSkeleton :columns="7" :rows="5" />
             </TableCell>
           </TableRow>
           <TableRow v-else-if="products.length === 0">
-            <TableCell colspan="8" class="px-6 py-8 text-center text-muted-foreground">{{ t('admin.products.empty') }}</TableCell>
+            <TableCell colspan="9" class="px-6 py-8 text-center text-muted-foreground">{{ t('admin.products.empty') }}</TableCell>
           </TableRow>
           <TableRow v-for="product in products" :key="product.id" class="hover:bg-muted/30">
             <TableCell class="w-10 px-3 py-4">
@@ -729,6 +742,16 @@ watch(
                 @click="toggleStatus(product)"
               >
                 {{ product.is_active ? t('admin.products.status.active') : t('admin.products.status.inactive') }}
+              </span>
+            </TableCell>
+            <TableCell class="px-6 py-4">
+              <span
+                class="inline-flex cursor-pointer rounded-full border px-2.5 py-1 text-xs transition-colors"
+                :class="product.card_check_enabled ? 'text-sky-700 border-sky-200 bg-sky-50 hover:bg-sky-100' : 'text-muted-foreground border-border bg-muted/30 hover:bg-muted/50'"
+                :title="t('admin.products.cardCheck.clickHint')"
+                @click="toggleCardCheck(product)"
+              >
+                {{ product.card_check_enabled ? t('admin.products.cardCheck.enabled') : t('admin.products.cardCheck.disabled') }}
               </span>
             </TableCell>
             <TableCell class="px-6 py-4 text-right">

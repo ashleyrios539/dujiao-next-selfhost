@@ -21,7 +21,6 @@ import (
 	"github.com/dujiao-next/internal/logger"
 	cardsecretcontract "github.com/dujiao-next/internal/modules/cardsecret/contract"
 	cardsecretdomain "github.com/dujiao-next/internal/modules/cardsecret/domain"
-	productcontract "github.com/dujiao-next/internal/modules/catalog/product/contract"
 	"github.com/dujiao-next/internal/shared/jsonmap"
 )
 
@@ -36,7 +35,6 @@ type Service struct {
 	downstreamCallbackSvc DownstreamCallbackEnqueuer
 	userOAuthIdentityRepo externalidentitycontract.Store
 	cardSecretStore       cardsecretcontract.Repository
-	productStore          productcontract.Repository
 	cardChecker           CardChecker
 }
 
@@ -63,7 +61,6 @@ type Options struct {
 	DefaultEmailConfig    config.EmailConfig
 	ExternalIdentityStore externalidentitycontract.Store
 	CardSecretStore       cardsecretcontract.Repository
-	ProductStore          productcontract.Repository
 	CardChecker           CardChecker
 }
 
@@ -80,7 +77,6 @@ func New(
 		defaultEmailConfig:    opts.DefaultEmailConfig,
 		userOAuthIdentityRepo: opts.ExternalIdentityStore,
 		cardSecretStore:       opts.CardSecretStore,
-		productStore:          opts.ProductStore,
 		cardChecker:           opts.CardChecker,
 	}
 }
@@ -246,28 +242,26 @@ func (s *Service) CreateAuto(orderID uint) (*fulfillmentdomain.Fulfillment, erro
 		}
 	}
 
-	// 交付前测活：启用测活的商品在事务外先行检测，死卡/未知卡标记失效，仅活卡进入交付。
+	// 交付前测活：仅在用户勾选测活（且已付加价）的商品项上执行，
+	// 在事务外先行检测，死卡/未知卡标记失效，仅活卡进入交付。
 	checkedByKey := make(map[string][]cardsecretdomain.Secret)
 	needsCheck := make(map[uint]bool)
-	if s.cardChecker != nil && s.cardSecretStore != nil && s.productStore != nil && s.settingService != nil {
+	for _, item := range order.Items {
+		if item.CardCheckEnabled {
+			needsCheck[item.ProductID] = true
+		}
+	}
+	if len(needsCheck) > 0 && s.cardChecker != nil && s.cardSecretStore != nil && s.settingService != nil {
 		cfg, cfgErr := s.settingService.GetCardCheckConfig()
 		if cfgErr == nil && cfg.Enabled && strings.TrimSpace(cfg.Kami) != "" && strings.TrimSpace(cfg.Interface) != "" {
-			productsNeedingCheck, productErr := s.checkEnabledProducts(order.Items)
-			if productErr != nil {
-				logger.Warnw("fulfillment_card_check_products_failed", "order_id", orderID, "error", productErr)
+			byKey, deadIDs, checkErr := s.runCardCheck(context.Background(), order, needsCheck, cfg)
+			if checkErr != nil {
+				logger.Warnw("fulfillment_card_check_failed", "order_id", orderID, "error", checkErr)
 				return nil, ErrFulfillmentCreateFailed
 			}
-			if len(productsNeedingCheck) > 0 {
-				needsCheck = productsNeedingCheck
-				byKey, deadIDs, checkErr := s.runCardCheck(context.Background(), order, needsCheck, cfg)
-				if checkErr != nil {
-					logger.Warnw("fulfillment_card_check_failed", "order_id", orderID, "error", checkErr)
-					return nil, ErrFulfillmentCreateFailed
-				}
-				s.markSecretsInvalid(deadIDs)
-				checkedByKey = byKey
-				logger.Infow("fulfillment_card_check_done", "order_id", orderID, "keys", len(byKey), "dead", len(deadIDs))
-			}
+			s.markSecretsInvalid(deadIDs)
+			checkedByKey = byKey
+			logger.Infow("fulfillment_card_check_done", "order_id", orderID, "keys", len(byKey), "dead", len(deadIDs))
 		}
 	}
 

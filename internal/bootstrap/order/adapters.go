@@ -430,6 +430,7 @@ func mapServiceOrderItems(items []ordertransport.CreateOrderItem) []orderapp.Cre
 			SKUID:           item.SKUID,
 			Quantity:        item.Quantity,
 			FulfillmentType: item.FulfillmentType,
+			CardCheckEnabled: item.CardCheckEnabled,
 		})
 	}
 	return out
@@ -457,6 +458,7 @@ func mapOrderPreview(preview *orderapp.OrderPreview) *ordertransport.OrderPrevie
 			PromotionDiscount:  item.PromotionDiscount,
 			WholesaleDiscount:  item.WholesaleDiscount,
 			FulfillmentType:    item.FulfillmentType,
+			CardCheckEnabled:   item.CardCheckEnabled,
 		})
 	}
 	return &ordertransport.OrderPreview{
