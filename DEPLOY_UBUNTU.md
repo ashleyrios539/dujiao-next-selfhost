@@ -359,22 +359,24 @@ sudo systemctl reload nginx
 
 ## 九、配置自动测活功能
 
-部署完成后，登录后台完成以下三步，即可启用"付款后发货前自动测活、只卖活卡"。
+部署完成后，登录后台完成以下步骤，即可启用"用户自选测活、只卖活卡"。
 
-### 1. 确认后台 API 可访问
+### 1. 在后台「测活设置」页面配置（推荐）
 
-先验证健康状态（在服务器本机）：
+后台 → **设置** → **测活设置 (Card Check)**，填写并保存：
+
+- **启用测活**：总开关
+- **CheckDx 卡密**：在 dxchecklive.com 购买/充值的卡密（点数凭证）
+- **检测接口（站点）**：值需在 CheckDx 网页端"设置/接口"查看，维护中的接口不可用
+- **卡片发行国家**：默认 `美国`
+- **检测缓冲数量 / 检测超时 / 结果轮询间隔**：按需调整
+
+配置完成后，点卡密输入框旁的 **「测试连接」** 按钮，可立即校验卡密是否有效并显示剩余点数。
+
+### 2.（可选）通过 API 配置（等价方式）
 
 ```bash
-curl -s https://shop.example.com/health
-```
-
-### 2. 配置 CheckDx 测活 API（全局设置）
-
-调用后台接口（需要管理员登录 Token）：
-
-```bash
-# 1) 登录后台获取 token（用户名/密码为初始化时设置的管理员）
+# 登录后台获取 token（用户名/密码为初始化时设置的管理员）
 #    响应为 {"status_code":0,"msg":"success","data":{"token":"..."}}
 TOKEN=$(curl -s -X POST https://shop.example.com/api/v1/admin/login \
   -H "Content-Type: application/json" \
@@ -382,11 +384,17 @@ TOKEN=$(curl -s -X POST https://shop.example.com/api/v1/admin/login \
   | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 echo "$TOKEN"
 
-# 2) 查看当前测活配置
+# 查看当前测活配置
 curl -s "https://shop.example.com/api/v1/admin/settings?key=card_check_config" \
   -H "Authorization: Bearer $TOKEN"
 
-# 3) 写入测活配置
+# 测试卡密是否有效（返回剩余点数）
+curl -s -X POST "https://shop.example.com/api/v1/admin/settings/card-check/test" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"kami":"你的CheckDx卡密"}'
+
+# 写入测活配置
 curl -s -X PUT https://shop.example.com/api/v1/admin/settings \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -491,6 +499,16 @@ sudo -u dujiao ./dujiao-next admin reset-2fa          # 重置管理员 2FA
 
 ### 更新版本
 
+**方式 A：一键脚本更新（推荐）**——脚本会拉取最新代码、重新构建前后端并重启，已有的 `config.yml` 不会被覆盖：
+
+```bash
+sudo bash /opt/src/dujiao-next/deploy_ubuntu.sh
+# 或
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/deploy_ubuntu.sh)"
+```
+
+**方式 B：手动更新**
+
 ```bash
 cd /opt/src/dujiao-next
 git pull --rebase
@@ -500,8 +518,10 @@ sudo chown dujiao:dujiao /opt/dujiao/dujiao-next
 sudo systemctl restart dujiao
 ```
 
-> 程序内置自更新/回滚机制：升级失败可执行
-> `cd /opt/dujiao && sudo -u dujiao ./dujiao-next rollback --force` 回滚（会先校验数据库迁移状态）。
+> - 升级到包含「测活设置页」的新版本后，后台 **设置 → 测活设置** 即可用网页配置，不再需要敲 curl。
+> - 若升级前用 curl 配置过 `card_check_config`，设置页会自动加载已有值，直接确认/修改即可。
+> - 程序内置自更新/回滚机制：升级失败可执行
+>   `cd /opt/dujiao && sudo -u dujiao ./dujiao-next rollback --force` 回滚（会先校验数据库迁移状态）。
 
 ---
 
