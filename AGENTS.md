@@ -74,9 +74,23 @@ reseller:
 
 - 本地源码：`C:\Users\Administrator\Documents\Default Project\dujiao-next`
 - GitHub 远端（公开）：`https://github.com/ashleyrios539/dujiaodxcheck_xhenmo01.git`（分支 `main`）
-- 本地 git remote：`origin` 指向官方 `dujiao-next/dujiao-next`，`github` 指向上述私有远端
-- 部署：Ubuntu 一键脚本 `deploy_ubuntu.sh`（自包含，全新服务器可 `curl | sudo bash` 直跑），详见 `DEPLOY_UBUNTU.md`
-- 服务器日常更新：改完本地代码 `git push github main`，服务器上重新 `sudo bash deploy_ubuntu.sh`
+- 本地 git remote：`origin` 指向官方 `dujiao-next/dujiao-next`，`github` 指向上述远端
+- 远程一键入口：`install.sh`（拉取并执行 `deploy_ubuntu.sh`），公开 URL：
+  `https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/install.sh`
+- 部署/更新命令：
+  ```bash
+  # 全新安装 或 更新（脚本自动识别模式）
+  sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/install.sh)"
+  ```
+- **脚本运行模式（重要）**：
+  - `deploy_ubuntu.sh` 启动时检测 `$INSTALL_DIR/config.yml`（默认 `/opt/dujiao/config.yml`）是否存在：
+    - 不存在 → 全新部署：交互向导（站点域名/后台路径/管理员账号/密码），自动生成强随机密钥与 config.yml
+    - 存在 → **更新模式**：先展示"拉取最新→重新构建→重启，数据全部保留"，`read -p "确认更新？[Y/n]"` 确认后才修改；
+      按 `n` 取消则不做任何改动。更新模式**不**重新生成管理员密码、不覆盖 config.yml、不删数据库
+  - 交互仅在有 TTY 时启用；`-y`/`--yes` 跳过交互用默认值/环境变量（非交互）
+  - 数据保留范围：`db/dujiao.db`（商品/订单/卡密/站点设置含 `card_check_config`）、`config.yml`、`uploads/`、管理员账号密码
+- 服务器日常更新：改完本地代码 `git push github main`，服务器上跑上面的一键命令即可（更新模式确认后生效）
+- 详细部署见 `DEPLOY_UBUNTU.md`
 
 ## 技术栈与架构
 

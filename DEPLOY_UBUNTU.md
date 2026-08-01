@@ -7,16 +7,20 @@
 > **快速开始**：仓库自带一键部署脚本 `deploy_ubuntu.sh`，可自动完成依赖安装、源码构建、配置生成、systemd 服务与 Nginx 配置。**全新服务器**（Ubuntu 22.04 / 24.04）装完系统后可直接从 GitHub 拉取运行：
 >
 > ```bash
-> # 方式 A：下载后运行（交互式向导，推荐）
+> # 一键命令（全新安装 或 已有服务器更新 都适用，脚本自动识别）
+> sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/install.sh)"
+>
+> # 或直接下载运行（交互式向导）
 > wget https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/deploy_ubuntu.sh
 > sudo bash deploy_ubuntu.sh
 >
-> # 方式 B：一条命令直装
-> sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/deploy_ubuntu.sh)"
->
-> # 方式 C：非交互 + 环境变量预设（无人值守）
-> sudo DOMAIN=shop.example.com DJ_ADMIN_PASS='你的密码' bash deploy_ubuntu.sh
+> # 非交互 + 环境变量预设（无人值守）
+> sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/deploy_ubuntu.sh)" deploy_ubuntu.sh -y
 > ```
+>
+> **脚本自动识别运行模式**：
+> - **首次运行** = 全新部署，交互询问：站点域名 / 后台路径 / 管理员账号 / 管理员密码
+> - **再次运行** = **更新模式**：会先显示"将拉取最新代码→重新构建→重启，数据/配置/密码/测活设置全部保留"，并确认后再修改；按 `n` 取消则不做任何改动
 >
 > 脚本默认开启分销/代理商功能且**关闭子站**（`reseller.enabled: true`、`reseller.sub_sites_enabled: false`，即主站代理中心按渠道价批发采购），可用环境变量 `RESELLER_ENABLED` / `RESELLER_SUB_SITES_ENABLED` 覆盖。也可手动按下列各节逐步部署。
 
@@ -499,12 +503,14 @@ sudo -u dujiao ./dujiao-next admin reset-2fa          # 重置管理员 2FA
 
 ### 更新版本
 
-**方式 A：一键脚本更新（推荐）**——脚本会拉取最新代码、重新构建前后端并重启，已有的 `config.yml` 不会被覆盖：
+**方式 A：一键更新（推荐，更新模式）**——脚本检测到已安装后进入**更新模式**：先显示"将拉取最新代码 → 重新构建前后端 → 重启，数据库/配置/密码/测活设置全部保留"，**确认后才修改**；按 `n` 取消则不做任何改动。
 
 ```bash
+# 远程一键（服务器上直接执行）
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/install.sh)"
+
+# 或本机已克隆部署脚本时
 sudo bash /opt/src/dujiao-next/deploy_ubuntu.sh
-# 或
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/deploy_ubuntu.sh)"
 ```
 
 **方式 B：手动更新**
@@ -518,8 +524,7 @@ sudo chown dujiao:dujiao /opt/dujiao/dujiao-next
 sudo systemctl restart dujiao
 ```
 
-> - 升级到包含「测活设置页」的新版本后，后台 **设置 → 测活设置** 即可用网页配置，不再需要敲 curl。
-> - 若升级前用 curl 配置过 `card_check_config`，设置页会自动加载已有值，直接确认/修改即可。
+> **更新保留说明**：更新只会替换程序文件，**不会丢失**：数据库（商品/订单/卡密）、`config.yml`、上传文件、管理员账号与密码、站点设置（含 `card_check_config` 测活配置）。升级到含「测活设置页」的新版本后，后台 **设置 → 测活设置** 会自动加载已有值。
 > - 程序内置自更新/回滚机制：升级失败可执行
 >   `cd /opt/dujiao && sudo -u dujiao ./dujiao-next rollback --force` 回滚（会先校验数据库迁移状态）。
 
