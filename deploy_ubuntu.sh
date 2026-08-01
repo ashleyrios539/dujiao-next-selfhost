@@ -122,13 +122,33 @@ ask_password() {
   fi
 }
 
+# 检测安装状态：install 目录存在 config.yml 视为「更新」，否则为「全新部署」
+detect_install_state() {
+  INSTALL_STATE="fresh"
+  FRESH_INSTALL=1
+  if [ -f "$INSTALL_DIR/config.yml" ]; then
+    INSTALL_STATE="update"
+    FRESH_INSTALL=0
+  fi
+}
+
 interactive_prompt() {
   [ "$NON_INTERACTIVE" -eq 1 ] && return 0
   # 非 TTY（如管道/定时任务）时跳过交互，避免卡在 read 等待
   [ -t 0 ] || return 0
 
   echo ""
-  info "==================== 部署配置向导 ===================="
+  if [ "$INSTALL_STATE" = "update" ]; then
+    info "==================== 更新模式 ===================="
+    info "检测到已安装（$INSTALL_DIR/config.yml 存在），本次将作为【更新】执行。"
+    info "  • 拉取最新源码 → 重新构建前后端 → 重启服务"
+    info "  • 数据库 / config.yml / 上传文件 / 管理员密码 / 测活设置 全部保留，无需重新配置"
+    echo ""
+    ask "站点域名（回车=保持现状，不修改 Nginx）: " DOMAIN ""
+    return 0
+  fi
+
+  info "==================== 部署配置向导（全新安装） ===================="
   info "（直接回车使用默认值；留空的项稍后自动生成）"
   echo ""
 
@@ -145,6 +165,23 @@ confirm_deploy() {
   [ -t 0 ] || return 0
 
   echo ""
+  if [ "$INSTALL_STATE" = "update" ]; then
+    info "==================== 更新确认 ===================="
+    echo "  源码目录:   $SRC_DIR"
+    echo "  安装目录:   $INSTALL_DIR"
+    echo "  本次操作:   拉取最新代码 → 重新构建 → 重启服务"
+    echo "  数据保留:   数据库 / config.yml / 上传文件 / 管理员密码 / 测活设置"
+    echo ""
+    local confirm
+    read -r -p "  确认更新到最新版本？[Y/n] " confirm || true
+    case "${confirm:-Y}" in
+      Y|y|yes|YES) ;;
+      *) die "已取消更新，未做任何修改" ;;
+    esac
+    echo ""
+    return 0
+  fi
+
   info "==================== 部署配置预览 ===================="
   echo "  源码目录:   $SRC_DIR"
   echo "  安装目录:   $INSTALL_DIR"
@@ -289,11 +326,9 @@ setup_install_dir() {
   cp -f "$SRC_DIR/dujiao-next" "$INSTALL_DIR/dujiao-next"
   chmod 755 "$INSTALL_DIR/dujiao-next"
 
-  FRESH_INSTALL=0
-  if [ -f "$INSTALL_DIR/config.yml" ]; then
-    warn "已存在 $INSTALL_DIR/config.yml，跳过生成（数据与配置均保留，仅更新程序）"
+  if [ "$INSTALL_STATE" = "update" ]; then
+    warn "检测到已有安装，跳过生成 config.yml（数据与配置均保留，仅更新程序）"
   else
-    FRESH_INSTALL=1
     log "生成 config.yml 与强随机密钥..."
     APP_SECRET="$(gen_secret)"
     JWT_SECRET="$(gen_secret)"
@@ -509,6 +544,7 @@ EOF
 }
 
 # ================================ 主流程 ==================================
+detect_install_state
 interactive_prompt
 confirm_deploy
 install_base
