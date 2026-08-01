@@ -39,6 +39,22 @@ func ParseCard(raw string) (Card, bool) {
 	return Card{}, false
 }
 
+// ExtractCardNumber 宽松提取卡密文本中的卡号（首个 13~19 位数字串），
+// 用于 BIN 标注等只需要卡号、不需要完整卡信息（到期/安全码）的场景。
+// 它不要求整卡可解析，因此可以覆盖 card|mm|yy|cvv|姓名|地址|...|邮箱 等
+// 末尾字段不含数字而完整 ParseCard 会失败的格式。
+func ExtractCardNumber(raw string) (string, bool) {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return "", false
+	}
+	number := numberOnlyRe.FindString(text)
+	if len(number) < 13 || len(number) > 19 {
+		return "", false
+	}
+	return number, true
+}
+
 func parseJSONCard(text string) (Card, bool) {
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(text), &data); err != nil {

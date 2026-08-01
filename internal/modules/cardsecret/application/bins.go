@@ -200,11 +200,11 @@ func (s *Service) annotateCardSecrets(items []cardsecretdomain.Secret) {
 	var targets []index
 	binSet := make(map[string]struct{})
 	for i := range items {
-		card, ok := cardcheck.ParseCard(items[i].Secret)
-		if !ok || len(card.Number) < 6 {
+		number, ok := cardcheck.ExtractCardNumber(items[i].Secret)
+		if !ok {
 			continue
 		}
-		bin := card.Number[:6]
+		bin := number[:6]
 		if _, exists := binSet[bin]; !exists {
 			binSet[bin] = struct{}{}
 		}
