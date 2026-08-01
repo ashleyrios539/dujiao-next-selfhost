@@ -4,20 +4,21 @@
 
 适用系统：Ubuntu 22.04 / 24.04（x86_64）。已测试版本：Go 1.26.5、Node.js 24、pnpm 10。
 
-> **快速开始**：仓库自带一键部署脚本 `deploy_ubuntu.sh`，可自动完成依赖安装、源码构建、配置生成、systemd 服务与 Nginx 配置。
+> **快速开始**：仓库自带一键部署脚本 `deploy_ubuntu.sh`，可自动完成依赖安装、源码构建、配置生成、systemd 服务与 Nginx 配置。**全新服务器**（Ubuntu 22.04 / 24.04）装完系统后可直接从 GitHub 拉取运行：
 >
 > ```bash
-> # 交互模式（推荐）：依次询问站点域名 / 后台路径 / 管理员用户名 / 管理员密码，
-> # 并显示配置预览确认后开始部署
+> # 方式 A：下载后运行（交互式向导，推荐）
+> wget https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/deploy_ubuntu.sh
 > sudo bash deploy_ubuntu.sh
 >
-> # 非交互模式：全部使用环境变量或默认值
-> sudo -y bash deploy_ubuntu.sh
-> # 或带环境变量预设
-> sudo DOMAIN=shop.example.com DJ_ADMIN_PASS=你的密码 bash deploy_ubuntu.sh
+> # 方式 B：一条命令直装
+> sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/deploy_ubuntu.sh)"
+>
+> # 方式 C：非交互 + 环境变量预设（无人值守）
+> sudo DOMAIN=shop.example.com DJ_ADMIN_PASS='你的密码' bash deploy_ubuntu.sh
 > ```
 >
-> 也可手动按下列各节逐步部署。
+> 脚本默认开启分销/代理商功能且**关闭子站**（`reseller.enabled: true`、`reseller.sub_sites_enabled: false`，即主站代理中心按渠道价批发采购），可用环境变量 `RESELLER_ENABLED` / `RESELLER_SUB_SITES_ENABLED` 覆盖。也可手动按下列各节逐步部署。
 
 ---
 

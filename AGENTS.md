@@ -2,6 +2,65 @@
 
 本文件供 AI 助手（opencode 等）在新会话中快速了解本项目。请先阅读本文件再动手修改。
 
+## 分销/代理商（渠道价批发采购，不开子站）
+
+> 本项目除了官方自带的"分销子站 + 加价"模式外，还实现了**第二种代理商形态：渠道价批发采购，不开放子站点**。
+> 运营方在管理端给商品/SKU 设"渠道价"（批发进价，可低于零售价、不得低于成本价），代理商在**主站**的
+> 代理中心（分销中心 → 批发采购）按渠道价批量下单付款，平台发货到其名下。代理不拥有独立子站。
+
+关键开关：`config.yml` → `reseller` 段
+```yaml
+reseller:
+  enabled: true              # 开总分销功能
+  sub_sites_enabled: false   # 关闭子站：域名解析永远按主站，代理仅走主站批发采购
+  self_apply_enabled: true
+  subdomain_base: ""         # 不开子站则无需配置泛解析
+```
+
+### 本分支的核心改动（对比官方 dujiao-next）
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| 配置 | `internal/config/config.go` | `ResellerConfig` 新增 `SubSitesEnabled`（mapstructure `sub_sites_enabled`） |
+| 租户 | `internal/modules/reseller/contract/tenant.go` | `TenantContext` 新增 `WholesalePurchase` 标记、`IsWholesalePurchase()`、`HasResellerPricing()`；新增构造器 `ResellerPurchaseContext` |
+| 域名解析 | `internal/modules/reseller/application/domain_resolver.go` | `!SubSitesEnabled` 时一律返回主站租户（不查 reseller_domains、不 404） |
+| 子站操作拦截 | `internal/modules/reseller/application/management.go` | 关闭子站后 `AssignSystemSubdomain` / `SubmitUserCustomDomain` 返回 `ErrSubdomainBaseMissing` |
+| 商品定价 | `internal/modules/reseller/domain/product_setting.go` + `constants.go` | 新增 `PricingModeChannelPrice = "channel_price"` + `ChannelPriceAmount` 字段 |
+| 计价 | `internal/modules/reseller/application/pricing_rules.go` | `ApplyPricingRule` 支持 channel_price；新增 `ValidateChannelUnitAmount`（允许低于零售、不得低于成本）、`ValidateResolvedUnitAmount`（按模式分派校验） |
+| 订单计价 | `internal/modules/order/application/reseller_pricing.go` | 门闩改用 `HasResellerPricing()`；批发单 `Base=成交额、Profit=0、ProfitEligible=false`（不记佣金） |
+| 批发接口 | `internal/modules/reseller/contract/purchase.go` + `application/product_setting.go` 内 `PurchaseService` | `GET /reseller/catalog`、`POST /reseller/purchases/preview`、`POST /reseller/purchases` |
+| 订单网关 | `internal/app/container/reseller_order_gateway.go` | 把分销批发端口适配到 `OrderService.CreateOrder/PreviewOrder`（构造 `ResellerPurchaseContext` 租户） |
+| 公开配置 | `internal/modules/settings/transport/http/public/handler.go` | 主站 `/public/config` 的 `tenant` 下发 `reseller_enabled / reseller_sub_sites_enabled / reseller_self_apply_enabled` |
+| 用户端 | `frontend/user/src/views/reseller/ResellerWholesale.vue` | 批发采购页（商品+渠道价+数量+测活勾选+预览+下单跳 `/pay`）；路由 `/reseller/wholesale` |
+| 用户端显隐 | `frontend/user/src/views/reseller/ResellerConsoleLayout.vue`、`router/index.ts`、`stores/app.ts` | 关闭子站时隐藏"域名/店铺设置/商品定价"导航并守卫重定向；`appStore.resellerSubSitesEnabled` |
+| 管理端 | `frontend/admin/src/views/admin/ResellerProductSettings.vue`、`layouts/AdminLayout.vue` | 定价模式新增"渠道价（批发进价）"+ 输入框；菜单按 `tenant.reseller_sub_sites_enabled` 隐藏域名/站点配置 |
+
+### 架构约束（必须遵守，改代码会触发失败）
+
+- **文件预算**：`internal/architecture/reseller_vertical_slice_test.go` 限制每个包的文件数
+  （reseller `application` ≤ 17、`transport/http/user` ≤ 8、`presenter` ≤ 4、`shared` ≤ 1，含 `_test.go`）。
+  新增代码**只能并入既有文件**，不能新建 `.go` 文件。改完必跑 `go test ./internal/architecture/...`。
+- **分层**：`application` 不得 import Gin/asynq/infrastructure/transport/bootstrap；只有 `gormstore` 能 import GORM；
+  分销模块内部通过 `contract/` 通信；订单与分销的跨模块调用走端口接口 + bootstrap/container 接线。
+- **分销订单语义**：批发单 `ResellerID` 有值但 `ProfitEligible=false`，`accounting_profit.go` 不会入账佣金；
+  子站零售单的利润 = 分销成交价 - 零售底价（加价差）。改 `reseller_pricing.go` 时两者口径都要自洽。
+
+### 已知注意点（本次开发踩过/留意的）
+
+1. **Windows 低精度时钟会导致测试偶发失败**：reseller `integrationtest` 原来用
+   `time.Now().UnixNano()` 拼内存库 DSN，同一毫秒内两个测试会碰撞到同一 `cache=shared` 内存库。
+   已改为 `module_test.go` 的 `uniqueInMemoryDSN()`（进程内原子计数）+ `seedAdminResellerManagementProfile`
+   用原子计数生成用户邮箱。**新增集成测试请复用这两个助手，不要再用 UnixNano。**
+2. **PowerShell 5.1 的 `Set-Content -Encoding UTF8` 会破坏中文编码**（读用系统 ANSI 码页 → 写回 UTF8 变乱码）。
+   改含中文的文件必须用编辑工具，不要用 `Set-Content` 重写整文件。
+3. **presenter 必须回显 `channel_price_amount`**：`presenter/reseller.go` 的 `ResellerProductSettingResp` 和
+   `AdminResellerProductSettingResp` 都要带该字段，否则管理端打开已设置的渠道价规则会显示 0.00 并在保存时清零。
+4. **`deploy_ubuntu.sh` 检测到已存在 `config.yml` 会跳过生成**：已有服务器升级需手动补 `reseller:` 段，否则分销功能不生效。
+5. **前端 i18n**：用户端 `frontend/user/src/i18n/locales/*.json` 与 `frontend/user/src/utils/resellerProductSettings.ts`、
+   管理端 `frontend/admin/src/i18n/index.ts` 各自维护定价模式文案，新增模式要三处同步（zh-CN / zh-TW / en-US）。
+6. **环境相关**：`internal/app/httpserver/middleware` 的合规测试用 CGO 版 `gorm.io/driver/sqlite`，本机无 CGO 会报错，
+   属环境预存问题，与分销改动无关；后端统一用纯 Go 驱动 `glebarez/sqlite`。
+
 ## 项目概览
 
 本项目是开源数字商品销售系统 **Dujiao-Next** 的定制分支，核心新增功能是 **CheckDx 卡片测活**：
