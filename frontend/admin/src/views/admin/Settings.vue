@@ -21,6 +21,7 @@ import SettingsOrderEmailTemplateTab from './components/SettingsOrderEmailTempla
 import SettingsNavigationTab from './components/SettingsNavigationTab.vue'
 import SettingsHomeAnnouncementTab from './components/SettingsHomeAnnouncementTab.vue'
 import SettingsUpstreamSyncTab from './components/SettingsUpstreamSyncTab.vue'
+import SettingsCardCheckTab from './components/SettingsCardCheckTab.vue'
 
 const { t } = useI18n()
 const loading = ref(false)
@@ -30,6 +31,7 @@ const orderEmailTemplateTabRef = ref<InstanceType<typeof SettingsOrderEmailTempl
 const navigationTabRef = ref<InstanceType<typeof SettingsNavigationTab>>()
 const homeAnnouncementTabRef = ref<InstanceType<typeof SettingsHomeAnnouncementTab>>()
 const upstreamSyncTabRef = ref<InstanceType<typeof SettingsUpstreamSyncTab>>()
+const cardCheckTabRef = ref<InstanceType<typeof SettingsCardCheckTab>>()
 const siteIconPickerRef = ref<InstanceType<typeof MediaPicker> | null>(null)
 const supportedLanguages = ['zh-CN', 'zh-TW', 'en-US'] as const
 type SupportedLanguage = (typeof supportedLanguages)[number]
@@ -82,6 +84,7 @@ const tabs = computed(() => [
   { label: t('admin.settings.tabs.google'), value: 'google' },
   { label: t('admin.settings.tabs.dashboard'), value: 'dashboard' },
   { label: t('admin.settings.tabs.upstreamSync'), value: 'upstream_sync' },
+  { label: t('admin.settings.tabs.cardCheck'), value: 'card_check' },
 ])
 
 const fallbackCurrencyOptions = [
@@ -764,6 +767,10 @@ const saveSettings = async () => {
     await upstreamSyncTabRef.value?.save()
     return
   }
+  if (currentTab.value === 'card_check') {
+    await cardCheckTabRef.value?.save()
+    return
+  }
   loading.value = true
   try {
     if (currentTab.value === 'telegram') {
@@ -809,7 +816,7 @@ onMounted(() => {
             {{ lang.name }}
           </button>
         </div>
-        <Button size="sm" class="w-full sm:w-auto" :disabled="loading || smtpTabRef?.submitting || smtpTabRef?.smtpTesting || captchaTabRef?.submitting || orderEmailTemplateTabRef?.submitting || navigationTabRef?.submitting || homeAnnouncementTabRef?.submitting || upstreamSyncTabRef?.submitting" @click="saveSettings">
+        <Button size="sm" class="w-full sm:w-auto" :disabled="loading || smtpTabRef?.submitting || smtpTabRef?.smtpTesting || captchaTabRef?.submitting || orderEmailTemplateTabRef?.submitting || navigationTabRef?.submitting || homeAnnouncementTabRef?.submitting || upstreamSyncTabRef?.submitting || cardCheckTabRef?.submitting" @click="saveSettings">
           <span v-if="loading" class="h-3 w-3 animate-spin rounded-full border-2 border-primary/30 border-t-primary"></span>
           {{ loading ? t('admin.settings.actions.saving') : t('admin.settings.actions.save') }}
         </Button>
@@ -1445,6 +1452,10 @@ onMounted(() => {
 
       <TabsContent value="upstream_sync" :forceMount="true" v-show="currentTab === 'upstream_sync'" class="mt-0">
         <SettingsUpstreamSyncTab ref="upstreamSyncTabRef" />
+      </TabsContent>
+
+      <TabsContent value="card_check" :forceMount="true" v-show="currentTab === 'card_check'" class="mt-0">
+        <SettingsCardCheckTab ref="cardCheckTabRef" />
       </TabsContent>
 
       <TabsContent value="dashboard" :forceMount="true" v-show="currentTab === 'dashboard'" class="space-y-6 mt-0">
