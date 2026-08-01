@@ -155,6 +155,8 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 
 		// 测活加价：用户勾选测活且商品支持时，把加价并入基础单价（再参与后续优惠计算）。
 		cardCheckEnabled := item.CardCheckEnabled && product.CardCheckEnabled
+		fmt.Printf("DEBUG pick: fee=%s isPositive=%v cardCheckEnabled=%v itemCheck=%v prodCheck=%v\n",
+			product.CardCheckFee.String(), product.CardCheckFee.Decimal.IsPositive(), cardCheckEnabled, item.CardCheckEnabled, product.CardCheckEnabled)
 		if cardCheckEnabled && product.CardCheckFee.Decimal.IsPositive() {
 			basePrice = basePrice.Add(product.CardCheckFee.Decimal).Round(2)
 		}
