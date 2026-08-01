@@ -390,7 +390,7 @@
                     </p>
                   </div>
 
-                  <!-- 挑卡种类：品牌 + 种类 chips -->
+                  <!-- 挑卡种类：品牌 + 种类单选 chips -->
                   <template v-if="pickMode === 'type'">
                     <div>
                       <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickBrandLabel') }}</label>
@@ -400,7 +400,7 @@
                           :key="brand.value"
                           type="button"
                           class="rounded-full border px-4 py-1.5 text-sm font-medium transition-all"
-                          :class="pickBrands.includes(brand.value)
+                          :class="pickBrands[0] === brand.value
                             ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/30'
                             : 'border bg-secondary text-foreground hover:border-primary/30 hover:-translate-y-0.5'"
                           @click="togglePickBrand(brand.value)"
@@ -415,14 +415,23 @@
                           :key="type.value"
                           type="button"
                           class="rounded-full border px-4 py-1.5 text-sm font-medium transition-all"
-                          :class="pickCardTypes.includes(type.value)
+                          :class="pickCardTypes[0] === type.value
                             ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/30'
                             : 'border bg-secondary text-foreground hover:border-primary/30 hover:-translate-y-0.5'"
                           @click="togglePickType(type.value)"
                         >{{ type.label }}</button>
                       </div>
                     </div>
-                    <p v-if="pickCountry && pickBrands.length === 0 && pickCardTypes.length === 0" class="text-xs text-amber-500">
+                    <p v-if="isPickBothRandom" class="text-xs text-amber-500">
+                      {{ t('productDetail.pickBothRandomGuide') }}
+                    </p>
+                    <button
+                      v-if="isPickBothRandom"
+                      type="button"
+                      class="mt-1.5 rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary transition-all hover:bg-primary/20"
+                      @click="selectPickMode('random')"
+                    >{{ t('productDetail.pickBothRandomGo') }}</button>
+                    <p v-else-if="pickCountry && pickBrands.length === 0 && pickCardTypes.length === 0" class="text-xs text-amber-500">
                       {{ t('productDetail.pickTypeRequired') }}
                     </p>
                   </template>
@@ -618,6 +627,7 @@ const {
   cardCheckEnabled, cardCheckPlainPrice, cardCheckCheckedPrice,
   pickEnabled, pickCountry, pickBrands, pickCardTypes, pickStockLoading,
   pickBrandOptions, pickTypeOptions, togglePickBrand, togglePickType, pickSelectionSummary,
+  isPickBothRandom,
   pickMode, pickBin, binStockCount, binStockLoading, selectPickMode,
   countrySearch, countryDropdownOpen, selectCountry, onCountryBlur, filteredCountries, selectedCountryName,
   pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
