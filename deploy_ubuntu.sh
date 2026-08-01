@@ -289,9 +289,11 @@ setup_install_dir() {
   cp -f "$SRC_DIR/dujiao-next" "$INSTALL_DIR/dujiao-next"
   chmod 755 "$INSTALL_DIR/dujiao-next"
 
+  FRESH_INSTALL=0
   if [ -f "$INSTALL_DIR/config.yml" ]; then
-    warn "已存在 $INSTALL_DIR/config.yml，跳过生成（如需重新生成请先删除该文件）"
+    warn "已存在 $INSTALL_DIR/config.yml，跳过生成（数据与配置均保留，仅更新程序）"
   else
+    FRESH_INSTALL=1
     log "生成 config.yml 与强随机密钥..."
     APP_SECRET="$(gen_secret)"
     JWT_SECRET="$(gen_secret)"
@@ -357,8 +359,8 @@ EOF
     ADMIN_PATH="$(sed -n 's/^[[:space:]]*admin_path:[[:space:]]*"\([^"]*\)"/\1/p' "$INSTALL_DIR/config.yml")"
   fi
 
-  # 管理员密码
-  if [ -z "$DJ_ADMIN_PASS" ]; then
+  # 管理员密码：仅在全新安装时自动生成；二次部署保留原有密码与数据
+  if [ "$FRESH_INSTALL" = "1" ] && [ -z "$DJ_ADMIN_PASS" ]; then
     DJ_ADMIN_PASS="$(gen_password)"
     GENERATED_PASS=1
   else
@@ -384,8 +386,7 @@ WorkingDirectory=$INSTALL_DIR
 ExecStart=$INSTALL_DIR/dujiao-next
 Restart=on-failure
 RestartSec=3
-Environment=DJ_DEFAULT_ADMIN_USERNAME=${DJ_ADMIN_USER:-admin}
-Environment=DJ_DEFAULT_ADMIN_PASSWORD=$DJ_ADMIN_PASS
+$([ "$FRESH_INSTALL" = "1" ] && printf 'Environment=DJ_DEFAULT_ADMIN_USERNAME=%s\nEnvironment=DJ_DEFAULT_ADMIN_PASSWORD=%s' "${DJ_ADMIN_USER:-admin}" "$DJ_ADMIN_PASS")
 
 [Install]
 WantedBy=multi-user.target
@@ -470,6 +471,9 @@ print_summary() {
 EOF
     chmod 600 "$INSTALL_DIR/admin_credentials.txt"
     chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/admin_credentials.txt"
+  else
+    echo "  初始密码： （沿用原密码，未改动）"
+    echo "  数据已保留：商品 / 订单 / 卡密 / 站点设置（含测活配置）均未丢失"
   fi
   echo "---------------------------------------------------------------"
   echo " 服务管理："
