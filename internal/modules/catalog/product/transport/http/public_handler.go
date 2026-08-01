@@ -11,6 +11,7 @@ import (
 
 	mappingdomain "github.com/dujiao-next/internal/modules/catalog/mapping/domain"
 
+	cardsecretcontract "github.com/dujiao-next/internal/modules/cardsecret/contract"
 	productcontract "github.com/dujiao-next/internal/modules/catalog/product/contract"
 	productdomain "github.com/dujiao-next/internal/modules/catalog/product/domain"
 	productpresenter "github.com/dujiao-next/internal/modules/catalog/product/transport/presenter"
@@ -19,6 +20,7 @@ import (
 	reseller "github.com/dujiao-next/internal/modules/reseller/contract"
 	"github.com/dujiao-next/internal/platform/http/ginutil"
 	"github.com/dujiao-next/internal/platform/http/response"
+	"github.com/dujiao-next/internal/shared/countries"
 	"github.com/dujiao-next/internal/shared/money"
 
 	"github.com/gin-gonic/gin"
@@ -32,6 +34,7 @@ type PublicProductQueries interface {
 	ListPublicForTenant(tenant reseller.TenantContext, categoryID, search string, page, pageSize int) ([]productdomain.Product, int64, error)
 	GetPublicBySlugForTenant(tenant reseller.TenantContext, slug string) (*productdomain.Product, error)
 	ApplyAutoStockCounts(products []productdomain.Product) error
+	CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCount, error)
 }
 
 // ResellerDisplayPricer 是分销站展示价解析端口。
@@ -208,6 +211,32 @@ func (h *PublicHandler) GetProductBySlug(c *gin.Context) {
 	}
 
 	response.Success(c, decorated)
+}
+
+// GetProductPickStock 获取商品挑卡可用库存聚合（按 SKU/国家/品牌/种类分组）。
+func (h *PublicHandler) GetProductPickStock(c *gin.Context) {
+	slug := c.Param("slug")
+	tenant := tenantFromRequest(c)
+
+	product, err := h.products.GetPublicBySlugForTenant(tenant, slug)
+	if err != nil {
+		if errors.Is(err, productcontract.ErrNotFound) {
+			ginutil.RespondError(c, response.CodeNotFound, "error.product_not_found", nil)
+			return
+		}
+		ginutil.RespondError(c, response.CodeInternal, "error.product_fetch_failed", err)
+		return
+	}
+
+	items, err := h.products.CountPickAttrs(product.ID)
+	if err != nil {
+		ginutil.RespondError(c, response.CodeInternal, "error.product_fetch_failed", err)
+		return
+	}
+	response.Success(c, gin.H{
+		"items":     items,
+		"countries": countries.List(),
+	})
 }
 
 func (h *PublicHandler) loadRelatedPostCards(ctx context.Context, productID uint) ([]productpresenter.RelatedPost, error) {

@@ -99,6 +99,7 @@ type Container struct {
 	PaymentChannelStore    paymentcontract.ChannelStore
 	CardSecretRepo         *cardsecretgormstore.Store
 	CardSecretBatchRepo    *cardsecretgormstore.BatchStore
+	CardBinRepo            *cardsecretgormstore.BinStore
 	GiftCardRepo           *giftcardgormstore.Store
 	FulfillmentStore       fulfillmentcontract.Store
 	ProductRepo            *productgormstore.ProductStore

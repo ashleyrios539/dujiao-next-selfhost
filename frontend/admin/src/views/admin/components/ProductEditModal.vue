@@ -162,6 +162,8 @@ const form = reactive({
   is_affiliate_enabled: false,
   card_check_enabled: false,
   card_check_fee: 0,
+  pick_enabled: false,
+  pick_prices: {} as Record<string, number>,
   is_active: true,
   sort_order: 0,
   manual_form_schema: { fields: [] as ManualFormField[] },
@@ -352,6 +354,27 @@ const parseManualFormSchemaForEdit = (rawSchema: Record<string, unknown> | null 
   return { fields }
 }
 
+const pickPriceKeys = ['visa', 'mastercard', 'discover', 'other', 'D', 'PD', 'C']
+
+const normalizePickPrices = (raw: Record<string, string> | null | undefined): Record<string, number> => {
+  const result: Record<string, number> = {}
+  if (!raw || typeof raw !== 'object') return result
+  for (const key of pickPriceKeys) {
+    const value = Number(raw[key])
+    if (Number.isFinite(value) && value > 0) result[key] = value
+  }
+  return result
+}
+
+const encodePickPrices = (raw: Record<string, number>): Record<string, string> => {
+  const result: Record<string, string> = {}
+  for (const key of pickPriceKeys) {
+    const value = Number(raw?.[key])
+    if (Number.isFinite(value) && value > 0) result[key] = value.toFixed(2)
+  }
+  return result
+}
+
 const normalizeManualFormSchemaForSubmit = () => {
   if (form.fulfillment_type !== 'manual') {
     return { fields: [] }
@@ -506,6 +529,8 @@ const resetForm = () => {
     is_affiliate_enabled: false,
     card_check_enabled: false,
     card_check_fee: 0,
+    pick_enabled: false,
+    pick_prices: {},
     is_active: true,
     sort_order: 0,
     manual_form_schema: { fields: [] },
@@ -556,6 +581,8 @@ const populateForm = (product: AdminProduct) => {
     is_affiliate_enabled: Boolean(product.is_affiliate_enabled),
     card_check_enabled: Boolean(product.card_check_enabled),
     card_check_fee: Number(product.card_check_fee || 0),
+    pick_enabled: Boolean(product.pick_enabled),
+    pick_prices: normalizePickPrices(product.pick_prices),
     is_active: product.is_active ?? true,
     sort_order: Number(product.sort_order || 0),
     manual_form_schema: parseManualFormSchemaForEdit(product.manual_form_schema),
@@ -630,6 +657,8 @@ const handleSubmit = async () => {
       is_affiliate_enabled: form.is_affiliate_enabled,
       card_check_enabled: form.card_check_enabled,
       card_check_fee: Number(form.card_check_fee) || 0,
+      pick_enabled: form.pick_enabled,
+      pick_prices: encodePickPrices(form.pick_prices),
       is_active: form.is_active,
       sort_order: Number(form.sort_order) || 0,
       manual_form_schema: normalizeManualFormSchemaForSubmit(),
@@ -1071,6 +1100,25 @@ watch(
               </div>
             </div>
             <p v-if="form.card_check_enabled" class="mt-1 text-xs text-muted-foreground">{{ t('admin.products.form.cardCheckFeeTip') }}</p>
+          </div>
+
+          <div class="col-span-1 md:col-span-2 border-t border-border pt-4">
+            <div class="flex flex-wrap items-center gap-4">
+              <div class="inline-flex items-center gap-2">
+                <Switch id="pick_enabled" v-model="form.pick_enabled" />
+                <Label for="pick_enabled" class="text-sm text-muted-foreground select-none">{{ t('admin.products.form.pickEnabled') }}</Label>
+              </div>
+            </div>
+            <p v-if="form.pick_enabled" class="mt-1 text-xs text-muted-foreground">{{ t('admin.products.form.pickEnabledTip') }}</p>
+            <div v-if="form.pick_enabled" class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div v-for="key in pickPriceKeys" :key="key" class="space-y-1.5">
+                <label class="block text-xs font-medium text-muted-foreground">
+                  {{ t(`admin.products.form.pickPrice.${key}`) }}
+                </label>
+                <Input v-model.number="form.pick_prices[key]" type="number" step="0.01" min="0" class="w-full" />
+              </div>
+            </div>
+            <p v-if="form.pick_enabled" class="mt-2 text-xs text-muted-foreground">{{ t('admin.products.form.pickPriceTip') }}</p>
           </div>
 
           <div class="col-span-1 md:col-span-2">

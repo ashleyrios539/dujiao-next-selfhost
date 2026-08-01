@@ -3,6 +3,7 @@ import { api } from './client'
 export const productAPI = {
     list: (params?: any) => api.get('/public/products', { params }),
     detail: (slug: string) => api.get(`/public/products/${slug}`),
+    pickStock: (slug: string) => api.get(`/public/products/${slug}/pick-stock`),
 }
 
 export const postAPI = {

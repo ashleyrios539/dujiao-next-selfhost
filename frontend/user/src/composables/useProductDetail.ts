@@ -72,6 +72,34 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
   const cardCheckEnabled = ref(false)
   const purchaseWarning = ref('')
 
+  const pickCountry = ref('')
+  const pickHeadEnabled = ref(false)
+  const pickBrands = ref<string[]>([])
+  const pickCardTypes = ref<string[]>([])
+  const pickStockItems = ref<any[]>([])
+  const pickCountries = ref<any[]>([])
+  const pickStockLoading = ref(false)
+
+  const pickBrandOptions = [
+    { value: 'visa', label: 'Visa' },
+    { value: 'mastercard', label: 'Mastercard' },
+    { value: 'discover', label: 'Discover' },
+    { value: 'other', label: t('productDetail.pickBrandOther') },
+  ]
+
+  const pickTypeOptions = [
+    { value: 'D', label: t('productDetail.pickTypeD') },
+    { value: 'PD', label: t('productDetail.pickTypePD') },
+    { value: 'C', label: t('productDetail.pickTypeC') },
+  ]
+
+  watch(pickHeadEnabled, (enabled) => {
+    if (!enabled) {
+      pickBrands.value = []
+      pickCardTypes.value = []
+    }
+  })
+
   const activeSkus = computed(() => {
     const rows = Array.isArray(product.value?.skus) ? product.value.skus : []
     return rows.filter((sku: any) => Boolean(sku?.is_active))
@@ -316,6 +344,8 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     if (product.value.stock_status === 'out_of_stock') return false
     if (selectedSku.value && !isSkuPurchasable(selectedSku.value)) return false
     if (stockBelowMinPurchase.value) return false
+    if (pickEnabled.value && !pickCountry.value) return false
+    if (pickEnabled.value && pickAvailableCount.value < quantity.value) return false
     return true
   })
   const cannotPurchaseReason = computed(() => {
@@ -323,6 +353,8 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     if (requiresLogin.value) return ''
     if (requiresSKUSelection.value) return t('productDetail.skuRequired')
     if (stockBelowMinPurchase.value) return t('productDetail.stockBelowMinPurchase', { count: quantityEffectiveMin.value })
+    if (pickEnabled.value && !pickCountry.value) return t('productDetail.pickCountryRequired')
+    if (pickEnabled.value && pickAvailableCount.value < quantity.value) return t('productDetail.pickStockInsufficient', { count: pickAvailableCount.value })
     if (canPurchase.value) return ''
     return t('productDetail.stockUnavailable')
   })
@@ -411,6 +443,9 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     paymentChannelIds: Array.isArray(product.value.payment_channel_ids) && product.value.payment_channel_ids.length > 0 ? product.value.payment_channel_ids : undefined,
     cardCheckEnabled: cardCheckEnabled.value,
     cardCheckFee: String(product.value?.card_check_fee || '0'),
+    pickCountry: pickEnabled.value ? pickCountry.value : '',
+    pickBrands: pickEnabled.value ? pickBrands.value : [],
+    pickCardTypes: pickEnabled.value ? pickCardTypes.value : [],
     quantity: quantity.value,
   })
 
@@ -533,6 +568,8 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
       const slug = route.params.slug as string
       const response = await productAPI.detail(slug)
       product.value = response.data.data || null
+      resetPickSelection()
+      await loadPickStock()
       if (images.value.length > 0) {
         currentImage.value = images.value[0] || ''
       }
@@ -672,6 +709,72 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
   })
   const cardCheckCheckedPrice = computed<number>(() => cardCheckPlainPrice.value + cardCheckFeeAmount.value)
 
+  const pickEnabled = computed(() => Boolean(product.value?.pick_enabled))
+
+  const loadPickStock = async () => {
+    if (!product.value?.slug || !pickEnabled.value) {
+      pickStockItems.value = []
+      pickCountries.value = []
+      return
+    }
+    pickStockLoading.value = true
+    try {
+      const response = await productAPI.pickStock(product.value.slug)
+      pickStockItems.value = Array.isArray(response.data.data?.items) ? response.data.data.items : []
+      pickCountries.value = Array.isArray(response.data.data?.countries) ? response.data.data.countries : []
+    } catch {
+      pickStockItems.value = []
+      pickCountries.value = []
+    } finally {
+      pickStockLoading.value = false
+    }
+  }
+
+  const availableCountries = computed(() => {
+    if (!pickEnabled.value) return []
+    const available = new Set<string>()
+    for (const item of pickStockItems.value) {
+      if (Number(item.total) > 0 && item.country) available.add(String(item.country))
+    }
+    return pickCountries.value.filter((c) => available.has(String(c.code)))
+  })
+
+  const pickAvailableCount = computed(() => {
+    if (!pickCountry.value) return 0
+    const skuId = normalizeSkuId(selectedSku.value?.id)
+    let total = 0
+    for (const item of pickStockItems.value) {
+      if (String(item.country || '') !== pickCountry.value) continue
+      if (skuId > 0 && normalizeSkuId(item.sku_id) !== skuId) continue
+      if (pickBrands.value.length > 0 && !pickBrands.value.includes(String(item.brand || ''))) continue
+      if (pickCardTypes.value.length > 0 && !pickCardTypes.value.includes(String(item.card_type || ''))) continue
+      total += Number(item.total || 0)
+    }
+    return total
+  })
+
+  const pickUnitSurcharge = computed<number>(() => {
+    const prices = product.value?.pick_prices || {}
+    const maxBy = (keys: string[]) => {
+      let max = 0
+      for (const key of keys) {
+        const value = Number(prices[key] || 0)
+        if (Number.isFinite(value) && value > max) max = value
+      }
+      return max
+    }
+    return Number((maxBy(pickBrands.value) + maxBy(pickCardTypes.value)).toFixed(2))
+  })
+
+  const pickUnitPrice = computed<number>(() => cardCheckPlainPrice.value + pickUnitSurcharge.value)
+
+  const resetPickSelection = () => {
+    pickCountry.value = ''
+    pickHeadEnabled.value = false
+    pickBrands.value = []
+    pickCardTypes.value = []
+  }
+
   onUnmounted(() => {
     debouncedLoadProduct.cancel()
   })
@@ -690,6 +793,11 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     activeSkus, selectedSku,
     // 测活
     cardCheckEnabled, cardCheckFeeAmount, cardCheckPlainPrice, cardCheckCheckedPrice,
+    // 挑卡
+    pickEnabled, pickCountry, pickHeadEnabled, pickBrands, pickCardTypes, pickStockLoading,
+    pickBrandOptions, pickTypeOptions,
+    availableCountries, pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
+    resetPickSelection,
     // 价格计算
     selectedSkuMemberPrice, hasMemberPrice,
     hasSelectedSkuWholesalePrice, selectedSkuWholesaleFinalIsMember, selectedSkuWholesaleFinalPrice,

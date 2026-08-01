@@ -1,6 +1,7 @@
 package catalogproductbootstrap
 
 import (
+	cardsecretcontract "github.com/dujiao-next/internal/modules/cardsecret/contract"
 	productapplication "github.com/dujiao-next/internal/modules/catalog/product/application"
 	productdomain "github.com/dujiao-next/internal/modules/catalog/product/domain"
 	producthttp "github.com/dujiao-next/internal/modules/catalog/product/transport/http"
@@ -44,6 +45,10 @@ func (adapter publicProductAdapter) GetPublicBySlugForTenant(
 
 func (adapter publicProductAdapter) ApplyAutoStockCounts(products []productdomain.Product) error {
 	return adapter.products.ApplyAutoStockCounts(products)
+}
+
+func (adapter publicProductAdapter) CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCount, error) {
+	return adapter.products.CountPickAttrs(productID)
 }
 
 // NewPublicHTTP 装配公开 Product HTTP Handler。

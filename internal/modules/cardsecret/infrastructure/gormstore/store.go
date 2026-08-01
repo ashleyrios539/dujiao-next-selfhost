@@ -72,6 +72,15 @@ func (r *Store) buildListQuery(filter cardsecretcontract.ListFilter) *gorm.DB {
 		query = query.Joins("LEFT JOIN card_secret_batches ON card_secret_batches.id = card_secrets.batch_id").
 			Where("card_secret_batches.deleted_at IS NULL AND LOWER(card_secret_batches.batch_no) LIKE LOWER(?)", "%"+batchNo+"%")
 	}
+	if country := strings.TrimSpace(filter.Country); country != "" {
+		query = query.Where("card_secrets.country = ?", strings.ToUpper(country))
+	}
+	if brand := strings.TrimSpace(filter.Brand); brand != "" {
+		query = query.Where("card_secrets.brand = ?", brand)
+	}
+	if cardType := strings.TrimSpace(filter.CardType); cardType != "" {
+		query = query.Where("card_secrets.card_type = ?", strings.ToUpper(cardType))
+	}
 	return query
 }
 
@@ -217,6 +226,79 @@ func (r *Store) ListAvailableByProductBatchForUpdate(productID, skuID, batchID u
 	}
 	var rows []cardsecretdomain.Secret
 	if err := query.Order("id asc").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *Store) buildPickQuery(productID, skuID uint, filter cardsecretcontract.PickFilter) *gorm.DB {
+	query := r.db.Model(&cardsecretdomain.Secret{}).
+		Where("product_id = ? AND status = ? AND deleted_at IS NULL", productID, cardsecretdomain.StatusAvailable)
+	if skuID > 0 {
+		query = query.Where("sku_id = ?", skuID)
+	}
+	if country := strings.TrimSpace(filter.Country); country != "" {
+		query = query.Where("country = ?", strings.ToUpper(country))
+	}
+	if len(filter.Brands) > 0 {
+		query = query.Where("brand IN ?", filter.Brands)
+	}
+	if len(filter.CardTypes) > 0 {
+		query = query.Where("card_type IN ?", filter.CardTypes)
+	}
+	return query
+}
+
+// ListAvailableByProductFiltered 按挑卡条件列出可用卡密（非锁定）。
+func (r *Store) ListAvailableByProductFiltered(productID, skuID uint, filter cardsecretcontract.PickFilter, limit int) ([]cardsecretdomain.Secret, error) {
+	if productID == 0 || limit <= 0 {
+		return nil, nil
+	}
+	query := r.buildPickQuery(productID, skuID, filter)
+	var rows []cardsecretdomain.Secret
+	if err := query.Order("id asc").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// ListAvailableByProductFilteredForUpdate 按挑卡条件锁定可用卡密。
+func (r *Store) ListAvailableByProductFilteredForUpdate(productID, skuID uint, filter cardsecretcontract.PickFilter, limit int) ([]cardsecretdomain.Secret, error) {
+	if productID == 0 || limit <= 0 {
+		return nil, nil
+	}
+	query := r.buildPickQuery(productID, skuID, filter).Clauses(clause.Locking{Strength: "UPDATE"})
+	var rows []cardsecretdomain.Secret
+	if err := query.Order("id asc").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// CountAvailableByProductFiltered 统计按挑卡条件可用的卡密数量。
+func (r *Store) CountAvailableByProductFiltered(productID, skuID uint, filter cardsecretcontract.PickFilter) (int64, error) {
+	if productID == 0 {
+		return 0, errors.New("invalid product id")
+	}
+	query := r.buildPickQuery(productID, skuID, filter)
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// CountPickAttrs 按商品/SKU/国家/品牌/种类聚合可用卡密数量（用于挑卡可用库存展示）。
+func (r *Store) CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCount, error) {
+	if productID == 0 {
+		return []cardsecretcontract.PickAttrCount{}, nil
+	}
+	var rows []cardsecretcontract.PickAttrCount
+	if err := r.db.Model(&cardsecretdomain.Secret{}).
+		Select("product_id, sku_id, country, brand, card_type, COUNT(*) as total").
+		Where("product_id = ? AND status = ? AND deleted_at IS NULL", productID, cardsecretdomain.StatusAvailable).
+		Group("product_id, sku_id, country, brand, card_type").
+		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil

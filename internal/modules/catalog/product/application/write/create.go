@@ -26,6 +26,14 @@ func normalizeCardCheckFee(raw *decimal.Decimal) decimal.Decimal {
 	return normalized
 }
 
+// normalizePickPrices 归一化挑卡属性加价表；未提供时返回空表。
+func normalizePickPrices(raw *map[string]interface{}) jsonmap.JSON {
+	if raw == nil {
+		return jsonmap.JSON{}
+	}
+	return productdomain.NormalizePickPrices(jsonmap.JSON(*raw))
+}
+
 // Create 创建商品
 func (s *WriteService) Create(input CreateProductInput) (*productdomain.Product, error) {	if err := productdomain.ValidateCategoryAssignment(s.categories, input.CategoryID, 0, productcontract.ErrProductCategoryInvalid); err != nil {
 		return nil, err
@@ -133,6 +141,8 @@ func (s *WriteService) Create(input CreateProductInput) (*productdomain.Product,
 		IsAffiliateEnabled:   isAffiliateEnabled,
 		CardCheckEnabled:     input.CardCheckEnabled != nil && *input.CardCheckEnabled,
 		CardCheckFee:         money.FromDecimal(normalizeCardCheckFee(input.CardCheckFee)),
+		PickEnabled:          input.PickEnabled != nil && *input.PickEnabled,
+		PickPrices:           normalizePickPrices(input.PickPrices),
 		IsActive:             isActive,
 		SortOrder:            input.SortOrder,
 	}

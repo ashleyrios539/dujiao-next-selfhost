@@ -34,6 +34,11 @@ var (
 	ErrRefundRecordCreateFailed   = errors.New("refund record create failed")
 	ErrCardSecretInsufficient     = errors.New("card secret insufficient")
 	ErrManualStockInsufficient    = errors.New("manual stock insufficient")
+	ErrProductPickNotSupported    = errors.New("product pick not supported")
+	ErrProductPickCountryRequired = errors.New("product pick country required")
+	ErrProductPickCountryInvalid  = errors.New("product pick country invalid")
+	ErrProductPickBrandInvalid    = errors.New("product pick brand invalid")
+	ErrProductPickTypeInvalid     = errors.New("product pick type invalid")
 	ErrQueueUnavailable           = errors.New("queue unavailable")
 	ErrResellerProductNotListed   = productcontract.ErrResellerProductNotListed
 	ErrResellerCouponNotAllowed   = errors.New("reseller coupon not allowed")

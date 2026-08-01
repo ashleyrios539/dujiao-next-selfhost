@@ -71,6 +71,12 @@ func (s *WriteService) Update(id string, input CreateProductInput) (*productdoma
 	if input.CardCheckFee != nil {
 		product.CardCheckFee = money.FromDecimal(normalizeCardCheckFee(input.CardCheckFee))
 	}
+	if input.PickEnabled != nil {
+		product.PickEnabled = *input.PickEnabled
+	}
+	if input.PickPrices != nil {
+		product.PickPrices = normalizePickPrices(input.PickPrices)
+	}
 	rawPurchaseType := strings.TrimSpace(input.PurchaseType)
 	if rawPurchaseType == "" {
 		rawPurchaseType = product.PurchaseType

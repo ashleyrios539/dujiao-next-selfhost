@@ -19,6 +19,10 @@ type Repository interface {
 	ListAvailableByProduct(productID, skuID uint, limit int) ([]cardsecretdomain.Secret, error)
 	ListAvailableByProductForUpdate(productID, skuID uint, limit int) ([]cardsecretdomain.Secret, error)
 	ListAvailableByProductBatchForUpdate(productID, skuID, batchID uint, limit int) ([]cardsecretdomain.Secret, error)
+	ListAvailableByProductFiltered(productID, skuID uint, filter PickFilter, limit int) ([]cardsecretdomain.Secret, error)
+	ListAvailableByProductFilteredForUpdate(productID, skuID uint, filter PickFilter, limit int) ([]cardsecretdomain.Secret, error)
+	CountAvailableByProductFiltered(productID, skuID uint, filter PickFilter) (int64, error)
+	CountPickAttrs(productID uint) ([]PickAttrCount, error)
 	GetByID(id uint) (*cardsecretdomain.Secret, error)
 	Update(secret *cardsecretdomain.Secret) error
 	BatchUpdateStatus(ids []uint, status string, updatedAt time.Time) (int64, error)
@@ -40,6 +44,15 @@ type BatchRepository interface {
 	GetByID(id uint) (*cardsecretdomain.Batch, error)
 	ListByProduct(productID, skuID uint, page, pageSize int) ([]cardsecretdomain.Batch, int64, error)
 	DeleteByProduct(productID uint) error
+}
+
+// CardBinRepository 持久化 BIN 库。
+type CardBinRepository interface {
+	UpsertBins(bins []cardsecretdomain.CardBin) error
+	FindByBins(bins []string) ([]cardsecretdomain.CardBin, error)
+	Count() (int64, error)
+	DeleteAll() error
+	List(filter CardBinFilter) ([]cardsecretdomain.CardBin, int64, error)
 }
 
 // UnitOfWork 在同一事务中暴露库存与批次端口。

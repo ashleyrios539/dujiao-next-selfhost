@@ -16,6 +16,9 @@ type ListCardSecretInput struct {
 	Status    string
 	Secret    string
 	BatchNo   string
+	Country   string
+	Brand     string
+	CardType  string
 	Page      int
 	PageSize  int
 }
@@ -38,6 +41,9 @@ func (s *Service) ListCardSecrets(input ListCardSecretInput) ([]cardsecretdomain
 		Status:    strings.TrimSpace(input.Status),
 		Secret:    strings.TrimSpace(input.Secret),
 		BatchNo:   strings.TrimSpace(input.BatchNo),
+		Country:   strings.ToUpper(strings.TrimSpace(input.Country)),
+		Brand:     strings.TrimSpace(input.Brand),
+		CardType:  strings.ToUpper(strings.TrimSpace(input.CardType)),
 		Page:      input.Page,
 		PageSize:  input.PageSize,
 	})
@@ -55,6 +61,9 @@ func (s *Service) buildRepositoryFilter(input ListCardSecretInput) cardsecretcon
 		Status:    strings.TrimSpace(input.Status),
 		Secret:    strings.TrimSpace(input.Secret),
 		BatchNo:   strings.TrimSpace(input.BatchNo),
+		Country:   strings.ToUpper(strings.TrimSpace(input.Country)),
+		Brand:     strings.TrimSpace(input.Brand),
+		CardType:  strings.ToUpper(strings.TrimSpace(input.CardType)),
 		Page:      input.Page,
 		PageSize:  input.PageSize,
 	}
@@ -67,7 +76,10 @@ func (s *Service) hasListFilter(input ListCardSecretInput) bool {
 		filter.BatchID > 0 ||
 		filter.Status != "" ||
 		filter.Secret != "" ||
-		filter.BatchNo != ""
+		filter.BatchNo != "" ||
+		filter.Country != "" ||
+		filter.Brand != "" ||
+		filter.CardType != ""
 }
 
 // BatchUpdateCardSecretStatus 批量更新卡密状态
@@ -117,6 +129,9 @@ func (s *Service) UpdateCardSecret(id uint, secret, status string) (*cardsecretd
 	trimmedSecret := strings.TrimSpace(secret)
 	if trimmedSecret != "" {
 		item.Secret = trimmedSecret
+		item.Country = ""
+		item.Brand = ""
+		item.CardType = ""
 	}
 	trimmedStatus := strings.TrimSpace(status)
 	if trimmedStatus != "" {
@@ -130,6 +145,19 @@ func (s *Service) UpdateCardSecret(id uint, secret, status string) (*cardsecretd
 	item.UpdatedAt = time.Now()
 	if err := s.secretRepo.Update(item); err != nil {
 		return nil, ErrUpdateFailed
+	}
+	if strings.TrimSpace(secret) != "" {
+		items := []cardsecretdomain.Secret{*item}
+		s.annotateCardSecrets(items)
+		if items[0].Country != item.Country || items[0].Brand != item.Brand || items[0].CardType != item.CardType {
+			item.Country = items[0].Country
+			item.Brand = items[0].Brand
+			item.CardType = items[0].CardType
+			item.UpdatedAt = time.Now()
+			if err := s.secretRepo.Update(item); err != nil {
+				return nil, ErrUpdateFailed
+			}
+		}
 	}
 	return item, nil
 }

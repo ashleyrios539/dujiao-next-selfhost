@@ -1,12 +1,15 @@
 package productdomain
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	categorydomain "github.com/dujiao-next/internal/modules/catalog/category/domain"
 	"github.com/dujiao-next/internal/shared/jsonmap"
 	"github.com/dujiao-next/internal/shared/jsonslice"
 	"github.com/dujiao-next/internal/shared/money"
+	"github.com/shopspring/decimal"
 )
 
 // Product 商品表
@@ -42,6 +45,8 @@ type Product struct {
 	IsMapped             bool                `gorm:"not null;default:false;index" json:"is_mapped"`                       // 是否为对接商品
 	CardCheckEnabled     bool                `gorm:"not null;default:false" json:"card_check_enabled"`                     // 是否支持交付前测活
 	CardCheckFee         money.Amount        `gorm:"type:decimal(20,2);not null;default:0" json:"card_check_fee"`          // 测活加价金额
+	PickEnabled          bool                `gorm:"not null;default:false" json:"pick_enabled"`                           // 是否支持挑卡
+	PickPrices           jsonmap.JSON        `gorm:"type:json" json:"pick_prices"`                                         // 挑卡属性加价表（key→单价字符串）
 	IsActive             bool                `gorm:"default:false;index" json:"is_active"`                                // 是否上架
 	SortOrder            int                 `gorm:"default:0;index" json:"sort_order"`                                   // 排序权重
 	CreatedAt            time.Time           `gorm:"index" json:"created_at"`                                             // 创建时间
@@ -56,4 +61,64 @@ type Product struct {
 // TableName 指定表名
 func (Product) TableName() string {
 	return "products"
+}
+
+// 挑卡属性加价键。
+const (
+	PickPriceKeyVisa       = "visa"
+	PickPriceKeyMastercard = "mastercard"
+	PickPriceKeyDiscover   = "discover"
+	PickPriceKeyOther      = "other"
+	PickPriceKeyTypeD      = "D"
+	PickPriceKeyTypePD     = "PD"
+	PickPriceKeyTypeC      = "C"
+)
+
+var pickPriceKeys = []string{
+	PickPriceKeyVisa, PickPriceKeyMastercard, PickPriceKeyDiscover, PickPriceKeyOther,
+	PickPriceKeyTypeD, PickPriceKeyTypePD, PickPriceKeyTypeC,
+}
+
+// NormalizePickPrices 归一化挑卡属性加价表：仅保留已知键，金额保留两位小数，负数归零。
+func NormalizePickPrices(raw jsonmap.JSON) jsonmap.JSON {
+	result := jsonmap.JSON{}
+	for _, key := range pickPriceKeys {
+		value, exists := raw[key]
+		if !exists {
+			continue
+		}
+		parsed, err := decimal.NewFromString(strings.TrimSpace(fmt.Sprint(value)))
+		if err != nil {
+			continue
+		}
+		parsed = parsed.Round(2)
+		if parsed.IsNegative() {
+			parsed = decimal.Zero
+		}
+		result[key] = parsed.StringFixed(2)
+	}
+	return result
+}
+
+// PickUnitSurcharge 计算单个商品的挑卡加价：
+// 同一属性组（品牌 / 种类）多选时只按该组所选最大值计一次。
+func PickUnitSurcharge(prices jsonmap.JSON, brands, cardTypes []string) decimal.Decimal {
+	maxByGroup := func(keys []string) decimal.Decimal {
+		max := decimal.Zero
+		for _, key := range keys {
+			raw, exists := prices[key]
+			if !exists {
+				continue
+			}
+			parsed, err := decimal.NewFromString(strings.TrimSpace(fmt.Sprint(raw)))
+			if err != nil {
+				continue
+			}
+			if parsed.GreaterThan(max) {
+				max = parsed
+			}
+		}
+		return max
+	}
+	return maxByGroup(brands).Add(maxByGroup(cardTypes)).Round(2)
 }

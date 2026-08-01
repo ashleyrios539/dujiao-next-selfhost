@@ -156,6 +156,7 @@ func registerAdminRoutes(
 	ordertransport.RegisterAdminRefundRoutes(authorized, adminOrderRefundHandler)
 	fulfillmenttransport.RegisterAdminRoutes(authorized, adminFulfillmentHandler)
 	cardsecrettransport.RegisterAdminRoutes(authorized, adminCardSecretHandler)
+	cardsecrettransport.RegisterBinRoutes(authorized, cardsecrettransport.NewBinAdminHandler(c.CardSecretService))
 	giftcardtransport.RegisterAdminRoutes(authorized, adminGiftCardHandler)
 
 	// 优惠券与活动价

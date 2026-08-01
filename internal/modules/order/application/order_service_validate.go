@@ -10,6 +10,7 @@ import (
 	orderdomain "github.com/dujiao-next/internal/modules/order/domain"
 
 	"github.com/dujiao-next/internal/constants"
+	cardsecretdomain "github.com/dujiao-next/internal/modules/cardsecret/domain"
 	productdomain "github.com/dujiao-next/internal/modules/catalog/product/domain"
 	"github.com/dujiao-next/internal/modules/catalog/product/manualform"
 	couponapp "github.com/dujiao-next/internal/modules/coupon/application"
@@ -115,6 +116,32 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 
 		productCurrency := currency
 		basePrice := sku.PriceAmount.Decimal.Round(2)
+
+		// 挑卡：商品开启挑卡时国家必选；品牌/种类为可选过滤，均需合法。
+		pickCountry := strings.ToUpper(strings.TrimSpace(item.PickCountry))
+		pickBrands := normalizePickBrands(item.PickBrands)
+		pickCardTypes := normalizePickCardTypes(item.PickCardTypes)
+		if pickCountry != "" && !product.PickEnabled {
+			return nil, ErrProductPickNotSupported
+		}
+		if product.PickEnabled && pickCountry == "" {
+			return nil, ErrProductPickCountryRequired
+		}
+		if pickCountry != "" && !validPickCountry(pickCountry) {
+			return nil, ErrProductPickCountryInvalid
+		}
+		if product.PickEnabled {
+			if err := validatePickBrands(pickBrands); err != nil {
+				return nil, err
+			}
+			if err := validatePickCardTypes(pickCardTypes); err != nil {
+				return nil, err
+			}
+		}
+		pickSurcharge := productdomain.PickUnitSurcharge(product.PickPrices, pickBrands, pickCardTypes)
+		if pickSurcharge.IsPositive() {
+			basePrice = basePrice.Add(pickSurcharge).Round(2)
+		}
 
 		// 测活加价：用户勾选测活且商品支持时，把加价并入基础单价（再参与后续优惠计算）。
 		cardCheckEnabled := item.CardCheckEnabled && product.CardCheckEnabled
@@ -261,6 +288,9 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 			PromotionID:                  promotionID,
 			FulfillmentType:              fulfillmentType,
 			CardCheckEnabled:             cardCheckEnabled,
+			PickCountry:                  pickCountry,
+			PickBrands:                   jsonslice.Strings(pickBrands),
+			PickCardTypes:                jsonslice.Strings(pickCardTypes),
 			ManualFormSchemaSnapshotJSON: manualSchemaSnapshot,
 			ManualFormSubmissionJSON:     manualSubmission,
 			InstructionsJSON:             product.InstructionsJSON,
@@ -425,16 +455,22 @@ func mergeCreateOrderItems(items []CreateOrderItem) ([]CreateOrderItem, error) {
 		if item.CardCheckEnabled {
 			key += ":check"
 		}
+		if country := strings.ToUpper(strings.TrimSpace(item.PickCountry)); country != "" {
+			key += ":pick:" + country + ":" + strings.Join(item.PickBrands, ",") + ":" + strings.Join(item.PickCardTypes, ",")
+		}
 		if idx, ok := indexMap[key]; ok {
 			merged[idx].Quantity += item.Quantity
 			continue
 		}
 		indexMap[key] = len(merged)
 		merged = append(merged, CreateOrderItem{
-			ProductID:       item.ProductID,
-			SKUID:           item.SKUID,
-			Quantity:        item.Quantity,
+			ProductID:        item.ProductID,
+			SKUID:            item.SKUID,
+			Quantity:         item.Quantity,
 			CardCheckEnabled: item.CardCheckEnabled,
+			PickCountry:      item.PickCountry,
+			PickBrands:       item.PickBrands,
+			PickCardTypes:    item.PickCardTypes,
 		})
 	}
 	return merged, nil
@@ -535,4 +571,73 @@ func FillOrdersItemsFromChildren(orders []orderdomain.Order) {
 	for i := range orders {
 		FillOrderItemsFromChildren(&orders[i])
 	}
+}
+
+// normalizePickBrands 归一化挑卡品牌列表（小写去重，去掉空项）。
+func normalizePickBrands(raw []string) []string {
+	seen := make(map[string]struct{}, len(raw))
+	result := make([]string, 0, len(raw))
+	for _, value := range raw {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		result = append(result, normalized)
+	}
+	return result
+}
+
+// normalizePickCardTypes 归一化挑卡种类列表（大写去重，去掉空项）。
+func normalizePickCardTypes(raw []string) []string {
+	seen := make(map[string]struct{}, len(raw))
+	result := make([]string, 0, len(raw))
+	for _, value := range raw {
+		normalized := strings.ToUpper(strings.TrimSpace(value))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		result = append(result, normalized)
+	}
+	return result
+}
+
+// validPickCountry 校验国家为两位大写字母。
+func validPickCountry(value string) bool {
+	if len(value) != 2 {
+		return false
+	}
+	for _, r := range value {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
+// validatePickBrands 校验品牌列表值合法。
+func validatePickBrands(brands []string) error {
+	for _, brand := range brands {
+		if !cardsecretdomain.ValidPickBrand(brand) {
+			return ErrProductPickBrandInvalid
+		}
+	}
+	return nil
+}
+
+// validatePickCardTypes 校验种类列表值合法。
+func validatePickCardTypes(cardTypes []string) error {
+	for _, cardType := range cardTypes {
+		if !cardsecretdomain.ValidCardType(cardType) {
+			return ErrProductPickTypeInvalid
+		}
+	}
+	return nil
 }

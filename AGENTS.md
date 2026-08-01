@@ -63,12 +63,13 @@ reseller:
 
 ## 项目概览
 
-本项目是开源数字商品销售系统 **Dujiao-Next** 的定制分支，核心新增功能是 **CheckDx 卡片测活**：
+本项目是开源数字商品销售系统 **Dujiao-Next** 的定制分支，核心新增功能是 **CheckDx 卡片测活** 与 **挑卡**：
 
 - 商家可为商品开启"支持测活"并设置"测活价格"
 - 用户在商品页可**自选是否测活**（勾选"开启测活"），两档价格展示（不测活价 / 测活价），界面**禁止出现"加价"字样**
 - 勾选测活的订单，付款后发货前调用 CheckDx API 批量检测；**只交付活卡**，死卡/未知卡/无法解析的卡标记为 `invalid` 状态
 - 未勾选测活的订单**直接发货不检测**
+- **挑卡**：商家上传 BIN 库自动标注卡密的国家/品牌/种类；开启挑卡的商品，用户**必须选国家**、可选按品牌（Visa/Mastercard/Discover/其他）与种类（D/PD/C）挑卡；挑选属性可设商品级加价（同组多选只按最高单价计一次）；按所选组合从库存过滤出卡，组合不足无法下单
 
 ## 仓库与部署
 
@@ -113,6 +114,30 @@ reseller:
 | 交付主流程 | `internal/modules/fulfillment/application/service.go` | `CreateAuto` 中按 `orderItem.CardCheckEnabled` 判定是否测活 |
 | 价格计算 | `internal/modules/order/application/order_service_validate.go` | `buildOrderResult`：测活价并入 basePrice 后参与优惠计算 |
 | 订单项字段 | `internal/modules/order/domain/order_item.go` | `CardCheckEnabled`（用户选择快照，持久化） |
+
+## 挑卡功能关键位置
+
+| 模块 | 文件 | 作用 |
+|---|---|---|
+| 卡属性 | `internal/modules/cardsecret/domain/secret.go` + `bin.go` | `card_secrets` 新增 `country`/`brand`/`card_type`；`card_bins` 表 + 品牌归一化 `NormalizePickBrand` / 种类映射 `NormalizeCardType` |
+| BIN 库服务 | `internal/modules/cardsecret/application/bins.go` | CSV 导入（列映射 + 种类规则）、统计、列表；卡密导入自动标注 `annotateCardSecrets`（取卡号前6位查 BIN） |
+| BIN 库路由 | `internal/modules/cardsecret/transport/http/bin_admin_handler.go` | 管理后台 `/admin/card-bins/*` |
+| 挑卡选卡过滤 | `internal/modules/cardsecret/contract` + `gormstore/store.go` | `PickFilter`（country/brands/cardTypes）+ `ListAvailableByProductFiltered`/`CountPickAttrs` |
+| 商品挑卡配置 | `internal/modules/catalog/product/domain/product.go` | `PickEnabled` + `PickPrices`（品牌/种类加价表）+ `PickUnitSurcharge`（同组多选只按最高单价计一次） |
+| 计价与快照 | `internal/modules/order/application/order_service_validate.go` | `buildOrderResult`：国家必选校验 + 挑卡加价并入 basePrice；订单项 `PickCountry`/`PickBrands`/`PickCardTypes` 快照 |
+| 预留过滤 | `internal/modules/order/application/order_service.go` | 预留卡密按订单项挑卡快照过滤，组合不足 `ErrCardSecretInsufficient` |
+| 交付过滤 | `internal/modules/fulfillment/application/check.go` + `service.go` | 测活 pool 与未测活直取均按挑卡快照过滤 |
+| 挑卡库存接口 | `internal/modules/catalog/product/transport/http/public_handler.go` | `GET /public/products/:slug/pick-stock`（SKU/国家/品牌/种类聚合 + 国家字典） |
+| 国家字典 | `internal/shared/countries/` | ISO 3166-1 alpha-2 → 中文名静态表 |
+| 前端 | `frontend/user/src/composables/useProductDetail.ts`、`views/ProductDetail.vue`、`templates/vault/ProductDetail.vue`、`stores/cart.ts`、`composables/useCheckout.ts` | 国家必选 + 品牌/种类挑卡 + 实时可发数 + 加价展示 + 快照携带 |
+| 管理端 | `frontend/admin/src/views/admin/CardBins.vue`、`CardSecrets.vue`、`components/ProductEditModal.vue` | BIN 库上传/列映射/种类规则、卡密属性列与过滤、商品挑卡加价表 |
+
+### 挑卡关键约定
+- 卡密属性来源：**BIN 库**（上传 CSV → `card_bins` 表），导入卡密时取卡号前 6 位自动标注国家/品牌/种类；未命中属性留空，仅作普通卡售卖。
+- 品牌归一化：`VISA→visa`、`MASTERCARD/MC→mastercard`、`DISCOVER→discover`、其余（含空）→`other`。
+- 种类三值：`D`（含预付）、`PD`（纯D不含预付）、`C`（纯C），默认映射 `PREPAID/GIFT→D`、`DEBIT→PD`、`CREDIT/CHARGE→C`（上传 UI 可改）。
+- 挑卡加价：商品级属性单价表（visa/mastercard/discover/other/D/PD/C），同一属性组（品牌/种类）多选时只按该组**最高单价**计一次，并入商品单价参与优惠计算。
+- 下单校验：商品开启挑卡时**国家必选**、格式两位大写；品牌/种类值合法；预留库存不足直接 `ErrCardSecretInsufficient` 无法下单。
 | 商品字段 | `internal/modules/catalog/product/domain/product.go` | `CardCheckEnabled`（支持测活）、`CardCheckFee`（测活价格） |
 | 测活全局设置 | `internal/modules/settings/schema/integration/cardcheck.go` | `card_check_config`：enabled/kami/interface/buffer（缓冲**比例** %）/timeout/poll；管理后台「设置 → 测活设置」页（`frontend/admin/src/views/admin/components/SettingsCardCheckTab.vue`）编辑 |
 | 测活交付编排 | `internal/modules/fulfillment/application/check.go` | `runCardCheck`/`checkItemCard`：按轮迭代测活，每轮「需求数量 + 需求数量×缓冲比例」取卡，活卡达到购买数量即停，不足按剩余数量按比例继续补检；`cardCheckPool` 按 id 去重取卡 |

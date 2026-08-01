@@ -6,6 +6,8 @@ import (
 	"time"
 
 	affiliatedomain "github.com/dujiao-next/internal/modules/affiliate/domain"
+	cardsecretcontract "github.com/dujiao-next/internal/modules/cardsecret/contract"
+	cardsecretdomain "github.com/dujiao-next/internal/modules/cardsecret/domain"
 	productcontract "github.com/dujiao-next/internal/modules/catalog/product/contract"
 	productdomain "github.com/dujiao-next/internal/modules/catalog/product/domain"
 	couponcontract "github.com/dujiao-next/internal/modules/coupon/contract"
@@ -171,6 +173,9 @@ type CreateOrderItem struct {
 	Quantity        int
 	FulfillmentType string
 	CardCheckEnabled bool
+	PickCountry     string
+	PickBrands      []string
+	PickCardTypes   []string
 }
 
 // childOrderPlan 子订单计划数据
@@ -318,6 +323,9 @@ type OrderPreviewItem struct {
 	WholesaleDiscount  money.Amount      `json:"wholesale_discount_amount"`
 	FulfillmentType    string            `json:"fulfillment_type"`
 	CardCheckEnabled   bool              `json:"card_check_enabled"`
+	PickCountry        string            `json:"pick_country"`
+	PickBrands         jsonslice.Strings `json:"pick_brands"`
+	PickCardTypes      jsonslice.Strings `json:"pick_card_types"`
 }
 
 type orderBuildResult struct {
@@ -403,6 +411,9 @@ func (s *OrderService) previewOrder(input orderCreateParams) (*OrderPreview, err
 			WholesaleDiscount:  item.WholesaleDiscount,
 			FulfillmentType:    item.FulfillmentType,
 			CardCheckEnabled:   item.CardCheckEnabled,
+			PickCountry:        item.PickCountry,
+			PickBrands:         item.PickBrands,
+			PickCardTypes:      item.PickCardTypes,
 		})
 	}
 	return &OrderPreview{
@@ -599,7 +610,22 @@ func (s *OrderService) createOrder(input orderCreateParams) (*orderdomain.Order,
 
 			if strings.TrimSpace(plan.Item.FulfillmentType) == constants.FulfillmentTypeAuto {
 				secretRepo := tx.CardSecrets()
-				rows, err := secretRepo.ListAvailableByProductForUpdate(plan.Item.ProductID, plan.Item.SKUID, plan.Item.Quantity)
+				var rows []cardsecretdomain.Secret
+				var err error
+				if plan.Item.PickCountry != "" {
+					rows, err = secretRepo.ListAvailableByProductFilteredForUpdate(
+						plan.Item.ProductID,
+						plan.Item.SKUID,
+						cardsecretcontract.PickFilter{
+							Country:   plan.Item.PickCountry,
+							Brands:    plan.Item.PickBrands,
+							CardTypes: plan.Item.PickCardTypes,
+						},
+						plan.Item.Quantity,
+					)
+				} else {
+					rows, err = secretRepo.ListAvailableByProductForUpdate(plan.Item.ProductID, plan.Item.SKUID, plan.Item.Quantity)
+				}
 				if err != nil {
 					return err
 				}

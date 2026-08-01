@@ -57,6 +57,9 @@ const filters = reactive({
   status: '__all__',
   secret: '',
   batchNo: '',
+  country: '',
+  brand: '__all__',
+  cardType: '__all__',
 })
 
 const currentBatchFilter = ref<AdminCardSecretBatch | null>(null)
@@ -248,6 +251,9 @@ const currentQueryFilter = computed<AdminCardSecretQueryPayload>(() => {
     status: normalizeFilterValue(filters.status) || undefined,
     secret: String(filters.secret || '').trim() || undefined,
     batch_no: String(filters.batchNo || '').trim() || undefined,
+    country: String(filters.country || '').trim().toUpperCase() || undefined,
+    brand: normalizeFilterValue(filters.brand) || undefined,
+    card_type: normalizeFilterValue(filters.cardType) || undefined,
   }
   if (currentProductId.value) {
     payload.product_id = currentProductId.value
@@ -518,6 +524,9 @@ const resetListFilters = async () => {
   filters.status = '__all__'
   filters.secret = ''
   filters.batchNo = ''
+  filters.country = ''
+  filters.brand = '__all__'
+  filters.cardType = '__all__'
   clearBatchFilter()
   clearBatchActionMessages()
   await fetchCardSecrets(1, { preserveRows: true })
@@ -710,6 +719,26 @@ const cardSecretStatusLabel = (status: string) => {
     used: t('admin.cardSecrets.status.used'),
   }
   return map[status] || status
+}
+
+const pickBrandLabel = (brand?: string) => {
+  const map: Record<string, string> = {
+    visa: 'Visa',
+    mastercard: 'Mastercard',
+    discover: 'Discover',
+    other: t('admin.cardSecrets.filters.brandOther'),
+  }
+  return brand ? map[brand] || brand : '-'
+}
+
+const pickTypeLabel = (cardType?: string) => {
+  if (!cardType) return '-'
+  const map: Record<string, string> = {
+    D: t('admin.cardSecrets.filters.typeD'),
+    PD: t('admin.cardSecrets.filters.typePD'),
+    C: t('admin.cardSecrets.filters.typeC'),
+  }
+  return map[cardType] || cardType
 }
 
 const cardSecretStatusClass = (status: string) => {
@@ -971,6 +1000,11 @@ onMounted(async () => {
                 :placeholder="t('admin.cardSecrets.filters.batchNoPlaceholder')"
                 @keyup.enter="applyListFilters"
               />
+              <Input
+                v-model="filters.country"
+                :placeholder="t('admin.cardSecrets.filters.countryPlaceholder')"
+                @keyup.enter="applyListFilters"
+              />
               <Select v-model="filters.status">
                 <SelectTrigger class="h-10">
                   <SelectValue :placeholder="t('admin.cardSecrets.statusAll')" />
@@ -980,6 +1014,29 @@ onMounted(async () => {
                   <SelectItem value="available">{{ t('admin.cardSecrets.status.available') }}</SelectItem>
                   <SelectItem value="reserved">{{ t('admin.cardSecrets.status.reserved') }}</SelectItem>
                   <SelectItem value="used">{{ t('admin.cardSecrets.status.used') }}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select v-model="filters.brand">
+                <SelectTrigger class="h-10">
+                  <SelectValue :placeholder="t('admin.cardSecrets.filters.brandAll')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">{{ t('admin.cardSecrets.filters.brandAll') }}</SelectItem>
+                  <SelectItem value="visa">Visa</SelectItem>
+                  <SelectItem value="mastercard">Mastercard</SelectItem>
+                  <SelectItem value="discover">Discover</SelectItem>
+                  <SelectItem value="other">{{ t('admin.cardSecrets.filters.brandOther') }}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select v-model="filters.cardType">
+                <SelectTrigger class="h-10">
+                  <SelectValue :placeholder="t('admin.cardSecrets.filters.typeAll')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">{{ t('admin.cardSecrets.filters.typeAll') }}</SelectItem>
+                  <SelectItem value="D">{{ t('admin.cardSecrets.filters.typeD') }}</SelectItem>
+                  <SelectItem value="PD">{{ t('admin.cardSecrets.filters.typePD') }}</SelectItem>
+                  <SelectItem value="C">{{ t('admin.cardSecrets.filters.typeC') }}</SelectItem>
                 </SelectContent>
               </Select>
               <div class="flex gap-2">
@@ -1083,6 +1140,9 @@ onMounted(async () => {
                 <TableHead class="min-w-[100px] px-4 py-3">{{ t('admin.cardSecrets.listTable.secret') }}</TableHead>
                 <TableHead class="min-w-[100px] px-4 py-3">{{ t('admin.cardSecrets.listTable.product') }}</TableHead>
                 <TableHead class="min-w-[100px] px-4 py-3">{{ t('admin.cardSecrets.listTable.sku') }}</TableHead>
+                <TableHead class="min-w-[60px] px-4 py-3">{{ t('admin.cardSecrets.listTable.country') }}</TableHead>
+                <TableHead class="min-w-[90px] px-4 py-3">{{ t('admin.cardSecrets.listTable.brand') }}</TableHead>
+                <TableHead class="min-w-[90px] px-4 py-3">{{ t('admin.cardSecrets.listTable.cardType') }}</TableHead>
                 <TableHead class="min-w-[90px] px-4 py-3">{{ t('admin.cardSecrets.listTable.status') }}</TableHead>
                 <TableHead class="min-w-[90px] px-4 py-3">{{ t('admin.cardSecrets.listTable.orderId') }}</TableHead>
                 <TableHead class="min-w-[90px] px-4 py-3">{{ t('admin.cardSecrets.listTable.batchId') }}</TableHead>
@@ -1092,12 +1152,12 @@ onMounted(async () => {
             </TableHeader>
             <TableBody class="divide-y divide-border">
               <TableRow v-if="cardSecretsLoading">
-                <TableCell :colspan="10" class="p-0">
-                  <TableSkeleton :columns="10" :rows="5" />
+                <TableCell :colspan="13" class="p-0">
+                  <TableSkeleton :columns="13" :rows="5" />
                 </TableCell>
               </TableRow>
               <TableRow v-else-if="cardSecrets.length === 0">
-                <TableCell colspan="10" class="px-4 py-6 text-center text-muted-foreground">{{ t('admin.cardSecrets.emptyList') }}</TableCell>
+                <TableCell colspan="13" class="px-4 py-6 text-center text-muted-foreground">{{ t('admin.cardSecrets.emptyList') }}</TableCell>
               </TableRow>
               <TableRow v-for="secret in cardSecrets" :key="secret.id" class="hover:bg-muted/30">
                 <TableCell class="px-4 py-3">
@@ -1122,6 +1182,9 @@ onMounted(async () => {
                 <TableCell class="min-w-[100px] px-4 py-3 text-xs text-muted-foreground">
                   <div class="break-words">{{ secretSkuLabel(secret) }}</div>
                 </TableCell>
+                <TableCell class="min-w-[60px] px-4 py-3 text-xs text-muted-foreground">{{ secret.country || '-' }}</TableCell>
+                <TableCell class="min-w-[90px] px-4 py-3 text-xs text-muted-foreground">{{ pickBrandLabel(secret.brand) }}</TableCell>
+                <TableCell class="min-w-[90px] px-4 py-3 text-xs text-muted-foreground">{{ pickTypeLabel(secret.card_type) }}</TableCell>
                 <TableCell class="min-w-[90px] px-4 py-3 text-xs">
                   <span class="inline-flex rounded-full border px-2.5 py-1 text-xs" :class="cardSecretStatusClass(secret.status)">
                     {{ cardSecretStatusLabel(secret.status) }}

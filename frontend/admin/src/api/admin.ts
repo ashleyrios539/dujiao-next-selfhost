@@ -246,6 +246,40 @@ export interface AdminCardSecretQueryPayload {
   status?: string
   secret?: string
   batch_no?: string
+  country?: string
+  brand?: string
+  card_type?: string
+}
+
+export interface AdminCardBin {
+  bin: string
+  country: string
+  brand: string
+  raw_brand: string
+  card_type: string
+  issuer: string
+  updated_at: string
+}
+
+export interface AdminCardBinColumnMap {
+  bin: string
+  country: string
+  brand: string
+  type: string
+}
+
+export interface AdminImportCardBinsPayload {
+  file: File
+  column_map?: AdminCardBinColumnMap
+  type_rules?: Record<string, string>
+}
+
+export interface AdminCardBinQueryPayload {
+  country?: string
+  brand?: string
+  keyword?: string
+  offset?: number
+  limit?: number
 }
 
 export type AdminGiftCardStatus = 'active' | 'redeemed' | 'disabled'
@@ -341,7 +375,7 @@ export const adminAPI = {
   getProduct: (id: number) => api.get(`/admin/products/${id}`),
   createProduct: (data: Partial<AdminProduct>) => api.post('/admin/products', data),
   updateProduct: (id: number, data: Partial<AdminProduct>) => api.put(`/admin/products/${id}`, data),
-  patchProduct: (id: number, data: { is_active?: boolean; sort_order?: number; category_id?: number; card_check_enabled?: boolean; card_check_fee?: number }) => api.patch(`/admin/products/${id}`, data),
+  patchProduct: (id: number, data: { is_active?: boolean; sort_order?: number; category_id?: number; card_check_enabled?: boolean; card_check_fee?: number; pick_enabled?: boolean }) => api.patch(`/admin/products/${id}`, data),
   updateProductWholesalePrices: (id: number, data: { wholesale_prices: AdminWholesalePrice[] }) =>
     api.patch(`/admin/products/${id}/wholesale-prices`, data),
   deleteProduct: (id: number) => api.delete(`/admin/products/${id}`),
@@ -554,6 +588,10 @@ export const adminAPI = {
   getCardSecretStats: (params?: Record<string, unknown>) => api.get('/admin/card-secrets/stats', { params }),
   getCardSecretBatches: (params?: Record<string, unknown>) => api.get('/admin/card-secrets/batches', { params }),
   getCardSecretTemplate: () => api.get('/admin/card-secrets/template'),
+  importCardBins: (formData: FormData) => api.post('/admin/card-bins/import', formData),
+  getCardBinStats: () => api.get('/admin/card-bins/stats'),
+  getCardBins: (params?: Record<string, unknown>) => api.get('/admin/card-bins', { params }),
+  clearCardBins: () => api.post('/admin/card-bins/clear'),
   // Site Connections
   getSiteConnections: (params?: Record<string, unknown>) => api.get('/admin/site-connections', { params }),
   getSiteConnection: (id: number) => api.get(`/admin/site-connections/${id}`),

@@ -9,6 +9,7 @@ func RegisterPublicRoutes(public gin.IRoutes, handler *PublicHandler) {
 	}
 	public.GET("/products", handler.GetProducts)
 	public.GET("/products/:slug", handler.GetProductBySlug)
+	public.GET("/products/:slug/pick-stock", handler.GetProductPickStock)
 }
 
 // RegisterAdminRoutes 注册商品后台端点。

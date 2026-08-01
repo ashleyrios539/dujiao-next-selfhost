@@ -36,6 +36,8 @@ type Product struct {
 	FulfillmentType      string            `json:"fulfillment_type"`
 	CardCheckEnabled     bool              `json:"card_check_enabled"`
 	CardCheckFee         money.Amount      `json:"card_check_fee"`
+	PickEnabled          bool              `json:"pick_enabled"`
+	PickPrices           jsonmap.JSON      `json:"pick_prices"`
 	ManualFormSchema     jsonmap.JSON      `json:"manual_form_schema"`
 	ManualStockAvailable int               `json:"manual_stock_available"`
 	AutoStockAvailable   int64             `json:"auto_stock_available"`

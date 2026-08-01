@@ -485,6 +485,10 @@ const (
 	SettingFieldCardCheckTimeout     = "timeout_seconds"
 	SettingFieldCardCheckPollMillis  = "poll_interval_millis"
 
+	SettingKeyCardBinConfig       = "card_bin_config"
+	SettingFieldCardBinColumnMap  = "column_map"
+	SettingFieldCardBinTypeRules  = "type_rules"
+
 	SettingKeyHomeAnnouncement   = "home_announcement"
 	SettingFieldPaymentCallback  = "payment_callback"
 	SettingFieldDujiaoPayWebhook = "dujiaopay_webhook"

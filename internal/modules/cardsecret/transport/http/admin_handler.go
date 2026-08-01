@@ -63,6 +63,9 @@ type CardSecretQueryRequest struct {
 	Status    string `json:"status"`
 	Secret    string `json:"secret"`
 	BatchNo   string `json:"batch_no"`
+	Country   string `json:"country"`
+	Brand     string `json:"brand"`
+	CardType  string `json:"card_type"`
 }
 
 // BatchUpdateCardSecretStatusRequest 批量更新卡密状态请求
@@ -109,6 +112,9 @@ func buildCardSecretListInput(filter *CardSecretQueryRequest) cardsecretapp.List
 		Status:    strings.TrimSpace(filter.Status),
 		Secret:    strings.TrimSpace(filter.Secret),
 		BatchNo:   strings.TrimSpace(filter.BatchNo),
+		Country:   strings.TrimSpace(filter.Country),
+		Brand:     strings.TrimSpace(filter.Brand),
+		CardType:  strings.TrimSpace(filter.CardType),
 	}
 }
 
@@ -262,6 +268,9 @@ func (h *AdminHandler) GetCardSecrets(c *gin.Context) {
 	status := strings.TrimSpace(c.Query("status"))
 	secret := strings.TrimSpace(c.Query("secret"))
 	batchNo := strings.TrimSpace(c.Query("batch_no"))
+	country := strings.TrimSpace(c.Query("country"))
+	brand := strings.TrimSpace(c.Query("brand"))
+	cardType := strings.TrimSpace(c.Query("card_type"))
 
 	items, total, err := h.service.ListCardSecrets(cardsecretapp.ListCardSecretInput{
 		ProductID: productID,
@@ -270,6 +279,9 @@ func (h *AdminHandler) GetCardSecrets(c *gin.Context) {
 		Status:    status,
 		Secret:    secret,
 		BatchNo:   batchNo,
+		Country:   country,
+		Brand:     brand,
+		CardType:  cardType,
 		Page:      page,
 		PageSize:  pageSize,
 	})

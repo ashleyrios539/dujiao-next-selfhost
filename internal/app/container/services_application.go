@@ -127,6 +127,7 @@ func (c *Container) initApplicationServices() {
 		Transactions: c.CardSecretRepo,
 		Products:     c.ProductRepo,
 		ProductSKUs:  c.ProductSKURepo,
+		Bins:         c.CardBinRepo,
 	})
 	c.GiftCardService = giftcardapp.NewService(giftcardapp.Options{
 		Repo:     c.GiftCardRepo,

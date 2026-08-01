@@ -229,6 +229,8 @@ type CreateProductRequest struct {
 	IsAffiliateEnabled  *bool                    `json:"is_affiliate_enabled"`
 	CardCheckEnabled    *bool                    `json:"card_check_enabled"`
 	CardCheckFee        *float64                 `json:"card_check_fee"`
+	PickEnabled         *bool                    `json:"pick_enabled"`
+	PickPrices          *map[string]interface{}  `json:"pick_prices"`
 	IsActive            *bool                    `json:"is_active"`
 	SortOrder           int                      `json:"sort_order"`
 }
@@ -311,6 +313,8 @@ func (h *AdminProductHandler) CreateProduct(c *gin.Context) {
 		IsAffiliateEnabled:   req.IsAffiliateEnabled,
 		CardCheckEnabled:     req.CardCheckEnabled,
 		CardCheckFee:         toDecimalPtr(req.CardCheckFee),
+		PickEnabled:          req.PickEnabled,
+		PickPrices:           req.PickPrices,
 		IsActive:             req.IsActive,
 		SortOrder:            req.SortOrder,
 	})
@@ -405,6 +409,8 @@ func (h *AdminProductHandler) UpdateProduct(c *gin.Context) {
 		IsAffiliateEnabled:   req.IsAffiliateEnabled,
 		CardCheckEnabled:     req.CardCheckEnabled,
 		CardCheckFee:         toDecimalPtr(req.CardCheckFee),
+		PickEnabled:          req.PickEnabled,
+		PickPrices:           req.PickPrices,
 		IsActive:             req.IsActive,
 		SortOrder:            req.SortOrder,
 	})
@@ -470,11 +476,12 @@ func (h *AdminProductHandler) UpdateProduct(c *gin.Context) {
 
 // QuickUpdateProductRequest 快速更新商品请求
 type QuickUpdateProductRequest struct {
-	IsActive        *bool    `json:"is_active"`
-	SortOrder       *int     `json:"sort_order"`
-	CategoryID      *uint    `json:"category_id"`
-	CardCheckEnabled *bool   `json:"card_check_enabled"`
-	CardCheckFee    *float64 `json:"card_check_fee"`
+	IsActive         *bool    `json:"is_active"`
+	SortOrder        *int     `json:"sort_order"`
+	CategoryID       *uint    `json:"category_id"`
+	CardCheckEnabled *bool    `json:"card_check_enabled"`
+	CardCheckFee     *float64 `json:"card_check_fee"`
+	PickEnabled      *bool    `json:"pick_enabled"`
 }
 
 type UpdateWholesalePricesRequest struct {
@@ -538,6 +545,9 @@ func (h *AdminProductHandler) QuickUpdateProduct(c *gin.Context) {
 	}
 	if req.CardCheckFee != nil {
 		fields["card_check_fee"] = *req.CardCheckFee
+	}
+	if req.PickEnabled != nil {
+		fields["pick_enabled"] = *req.PickEnabled
 	}
 	if len(fields) == 0 {
 		ginutil.RespondError(c, response.CodeBadRequest, "error.bad_request", nil)

@@ -75,11 +75,14 @@ func WrapRiskRateLimited(retryAfter int64, err error) error {
 
 // OrderItemRequest 订单项请求
 type OrderItemRequest struct {
-	ProductID       uint   `json:"product_id" binding:"required"`
-	SKUID           uint   `json:"sku_id"`
-	Quantity        int    `json:"quantity" binding:"required"`
-	FulfillmentType string `json:"fulfillment_type"`
-	CardCheckEnabled *bool `json:"card_check_enabled"`
+	ProductID        uint     `json:"product_id" binding:"required"`
+	SKUID            uint     `json:"sku_id"`
+	Quantity         int      `json:"quantity" binding:"required"`
+	FulfillmentType  string   `json:"fulfillment_type"`
+	CardCheckEnabled *bool    `json:"card_check_enabled"`
+	PickCountry      string   `json:"pick_country"`
+	PickBrands       []string `json:"pick_brands"`
+	PickCardTypes    []string `json:"pick_card_types"`
 }
 
 // CreateOrderRequest 用户订单预览/创建请求体（preview 使用）。
@@ -105,11 +108,14 @@ type CreateGuestOrderRequest struct {
 
 // CreateOrderItem 创建/预览订单项。
 type CreateOrderItem struct {
-	ProductID       uint
-	SKUID           uint
-	Quantity        int
-	FulfillmentType string
+	ProductID        uint
+	SKUID            uint
+	Quantity         int
+	FulfillmentType  string
 	CardCheckEnabled bool
+	PickCountry      string
+	PickBrands       []string
+	PickCardTypes    []string
 }
 
 // CreateOrderInput 用户订单预览输入。
@@ -168,6 +174,9 @@ type OrderPreviewItem struct {
 	WholesaleDiscount  money.Amount      `json:"wholesale_discount_amount"`
 	FulfillmentType    string            `json:"fulfillment_type"`
 	CardCheckEnabled   bool              `json:"card_check_enabled"`
+	PickCountry        string            `json:"pick_country"`
+	PickBrands         jsonslice.Strings `json:"pick_brands"`
+	PickCardTypes      jsonslice.Strings `json:"pick_card_types"`
 }
 
 // OrderPreviewService 订单金额预览端口。
@@ -250,11 +259,14 @@ func mapOrderItems(items []OrderItemRequest) []CreateOrderItem {
 	for _, item := range items {
 		check := item.CardCheckEnabled != nil && *item.CardCheckEnabled
 		out = append(out, CreateOrderItem{
-			ProductID:       item.ProductID,
-			SKUID:           item.SKUID,
-			Quantity:        item.Quantity,
-			FulfillmentType: item.FulfillmentType,
+			ProductID:        item.ProductID,
+			SKUID:            item.SKUID,
+			Quantity:         item.Quantity,
+			FulfillmentType:  item.FulfillmentType,
 			CardCheckEnabled: check,
+			PickCountry:      item.PickCountry,
+			PickBrands:       item.PickBrands,
+			PickCardTypes:    item.PickCardTypes,
 		})
 	}
 	return out

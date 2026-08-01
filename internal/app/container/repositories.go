@@ -51,6 +51,7 @@ func (c *Container) initRepositories() error {
 	c.PaymentChannelStore = paymentgormstore.NewChannelStore(db)
 	c.CardSecretRepo = cardsecretgormstore.New(db)
 	c.CardSecretBatchRepo = cardsecretgormstore.NewBatch(db)
+	c.CardBinRepo = cardsecretgormstore.NewBin(db)
 	c.GiftCardRepo = giftcardgormstore.New(db)
 	c.FulfillmentStore = fulfillmentgormstore.New(db)
 	c.ProductRepo = productgormstore.NewProductStore(db)

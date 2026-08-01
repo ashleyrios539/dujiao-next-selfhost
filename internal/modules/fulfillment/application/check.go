@@ -52,7 +52,12 @@ func (s *Service) runCardCheck(ctx context.Context, order *orderdomain.Order, ch
 			continue
 		}
 		key := orderdomain.ItemKey(item.ProductID, item.SKUID)
-		pool := newCardCheckPool(s.cardSecretStore, item.ProductID, item.SKUID, reservedByKey[key])
+		pickFilter := cardsecretcontract.PickFilter{
+			Country:   item.PickCountry,
+			Brands:    item.PickBrands,
+			CardTypes: item.PickCardTypes,
+		}
+		pool := newCardCheckPool(s.cardSecretStore, item.ProductID, item.SKUID, pickFilter, reservedByKey[key])
 		live, itemDead, checkErr := s.checkItemCard(ctx, item, pool, cfg, opts)
 		if checkErr != nil {
 			return nil, nil, checkErr
@@ -170,16 +175,18 @@ type cardCheckPool struct {
 	store     cardsecretcontract.Repository
 	productID uint
 	skuID     uint
+	filter    cardsecretcontract.PickFilter
 	queue     []cardsecretdomain.Secret
 	seen      map[uint]bool
 	availSeen int
 }
 
-func newCardCheckPool(store cardsecretcontract.Repository, productID, skuID uint, reserved []cardsecretdomain.Secret) *cardCheckPool {
+func newCardCheckPool(store cardsecretcontract.Repository, productID, skuID uint, filter cardsecretcontract.PickFilter, reserved []cardsecretdomain.Secret) *cardCheckPool {
 	pool := &cardCheckPool{
 		store:     store,
 		productID: productID,
 		skuID:     skuID,
+		filter:    filter,
 		seen:      make(map[uint]bool),
 	}
 	for _, secret := range reserved {
@@ -196,10 +203,16 @@ func newCardCheckPool(store cardsecretcontract.Repository, productID, skuID uint
 func (p *cardCheckPool) take(n int) ([]cardsecretdomain.Secret, error) {
 	for len(p.queue) < n {
 		need := n - len(p.queue)
-		// ListAvailableByProduct 恒按 id 升序返回可用库存，前 availSeen 条大概率已被
-		// 本池取过；请求 enough = need + availSeen 以越过已见过的部分，拿到 need 条新卡。
+		// 按 id 升序返回可用库存，前 availSeen 条大概率已被本池取过；
+		// 请求 enough = need + availSeen 以越过已见过的部分，拿到 need 条新卡。
 		enough := need + p.availSeen
-		rows, err := p.store.ListAvailableByProduct(p.productID, p.skuID, enough)
+		var rows []cardsecretdomain.Secret
+		var err error
+		if p.filter.Empty() {
+			rows, err = p.store.ListAvailableByProduct(p.productID, p.skuID, enough)
+		} else {
+			rows, err = p.store.ListAvailableByProductFiltered(p.productID, p.skuID, p.filter, enough)
+		}
 		if err != nil {
 			return nil, err
 		}

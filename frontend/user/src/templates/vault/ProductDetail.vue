@@ -190,6 +190,69 @@
             </div>
           </div>
 
+          <!-- 挑卡：必须选国家，可选品牌/种类挑卡 -->
+          <div v-if="pickEnabled" class="my-5 rounded-xl border-2 border-hairline-strong bg-card/60 px-4 py-4">
+            <div class="space-y-4">
+              <div>
+                <label class="mb-1.5 block text-sm font-semibold text-foreground">{{ t('productDetail.pickCountryLabel') }}</label>
+                <select
+                  v-model="pickCountry"
+                  class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                >
+                  <option value="">{{ t('productDetail.pickCountryPlaceholder') }}</option>
+                  <option v-for="country in availableCountries" :key="country.code" :value="country.code">
+                    {{ country.name }} {{ country.code }}
+                  </option>
+                </select>
+                <p v-if="pickStockLoading" class="mt-1 text-xs text-muted-foreground">{{ t('productDetail.pickStockLoading') }}</p>
+                <p v-else-if="pickCountry" class="mt-1 text-xs" :class="pickAvailableCount > 0 ? 'text-emerald-700' : 'text-destructive'">
+                  {{ t('productDetail.pickAvailable', { count: pickAvailableCount }) }}
+                </p>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <input
+                  id="pick_head_enabled"
+                  v-model="pickHeadEnabled"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-input"
+                />
+                <label for="pick_head_enabled" class="text-sm font-semibold select-none">{{ t('productDetail.pickHeadLabel') }}</label>
+              </div>
+
+              <div v-if="pickHeadEnabled" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label class="mb-1.5 block text-sm font-semibold text-foreground">{{ t('productDetail.pickBrandLabel') }}</label>
+                  <div class="space-y-1.5">
+                    <label v-for="brand in pickBrandOptions" :key="brand.value" class="flex cursor-pointer items-center gap-2 text-sm">
+                      <input v-model="pickBrands" type="checkbox" :value="brand.value" class="h-4 w-4 rounded border-input" />
+                      <span class="text-muted-foreground">{{ brand.label }}</span>
+                    </label>
+                  </div>
+                </div>
+                <div>
+                  <label class="mb-1.5 block text-sm font-semibold text-foreground">{{ t('productDetail.pickTypeLabel') }}</label>
+                  <div class="space-y-1.5">
+                    <label v-for="type in pickTypeOptions" :key="type.value" class="flex cursor-pointer items-center gap-2 text-sm">
+                      <input v-model="pickCardTypes" type="checkbox" :value="type.value" class="h-4 w-4 rounded border-input" />
+                      <span class="text-muted-foreground">{{ type.label }}</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="pickUnitSurcharge > 0" class="flex flex-wrap items-end gap-x-8 gap-y-2">
+                <div>
+                  <div class="text-xs text-muted-foreground">{{ t('productDetail.pickUnitPrice') }}</div>
+                  <div class="text-lg font-bold text-primary">{{ formatPrice(pickUnitPrice, siteCurrency) }}</div>
+                </div>
+                <div class="pb-1 text-xs text-muted-foreground">
+                  {{ t('productDetail.pickSurcharge', { amount: formatPrice(pickUnitSurcharge, siteCurrency) }) }}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 提示 -->
           <div v-if="cannotPurchaseReason" class="my-3.5 rounded-sm bg-destructive/10 px-3.5 py-2.5 text-sm font-semibold text-destructive">{{ cannotPurchaseReason }}</div>
           <div v-if="purchaseWarning" class="my-3.5 rounded-sm bg-warning/10 px-3.5 py-2.5 text-sm font-semibold text-warning">{{ purchaseWarning }}</div>
@@ -312,6 +375,8 @@ const {
   loading, product, relatedPosts, currentImage, selectedSkuId, quantity, purchaseWarning,
   activeSkus, selectedSku,
   cardCheckEnabled, cardCheckPlainPrice, cardCheckCheckedPrice,
+  pickEnabled, pickCountry, pickHeadEnabled, pickBrands, pickCardTypes, pickStockLoading,
+  pickBrandOptions, pickTypeOptions, availableCountries, pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
   selectedSkuMemberPrice, hasMemberPrice,
   hasSelectedSkuWholesalePrice, selectedSkuWholesaleFinalIsMember, selectedSkuWholesaleFinalPrice,
   selectedSkuWholesaleRules,

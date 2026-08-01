@@ -16,6 +16,7 @@ type ServiceOptions struct {
 	Transactions cardsecretcontract.UnitOfWork
 	Products     cardsecretcontract.ProductRepository
 	ProductSKUs  cardsecretcontract.ProductSKURepository
+	Bins         cardsecretcontract.CardBinRepository
 }
 
 // Service 卡密库存服务。
@@ -25,6 +26,7 @@ type Service struct {
 	transactions   cardsecretcontract.UnitOfWork
 	productRepo    cardsecretcontract.ProductRepository
 	productSKURepo cardsecretcontract.ProductSKURepository
+	binRepo        cardsecretcontract.CardBinRepository
 }
 
 func NewService(options ServiceOptions) *Service {
@@ -34,6 +36,7 @@ func NewService(options ServiceOptions) *Service {
 		transactions:   options.Transactions,
 		productRepo:    options.Products,
 		productSKURepo: options.ProductSKUs,
+		binRepo:        options.Bins,
 	}
 }
 

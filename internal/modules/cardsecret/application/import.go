@@ -100,6 +100,7 @@ func (s *Service) CreateCardSecretBatch(input CreateCardSecretBatchInput) (*card
 				UpdatedAt: now,
 			})
 		}
+		s.annotateCardSecrets(items)
 		if err := secretRepo.CreateBatch(items); err != nil {
 			return ErrCreateFailed
 		}

@@ -55,6 +55,12 @@ const routes = [
         meta: { permission: 'GET:/admin/card-secrets' },
       },
       {
+        path: 'card-bins',
+        name: 'card-bins',
+        component: () => import('@/views/admin/CardBins.vue'),
+        meta: { permission: 'GET:/admin/card-bins' },
+      },
+      {
         path: 'gift-cards',
         name: 'gift-cards',
         component: () => import('@/views/admin/GiftCards.vue'),

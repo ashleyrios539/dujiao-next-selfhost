@@ -77,6 +77,8 @@ export interface AdminProduct {
   is_affiliate_enabled: boolean
   card_check_enabled: boolean
   card_check_fee: number
+  pick_enabled: boolean
+  pick_prices?: Record<string, string>
   auto_stock_available: number
   auto_stock_total: number
   auto_stock_locked: number
@@ -223,6 +225,9 @@ export interface AdminCardSecret {
   batch_id?: number
   secret: string
   status: string
+  country?: string
+  brand?: string
+  card_type?: string
   order_id?: number
   reserved_at?: string
   used_at?: string

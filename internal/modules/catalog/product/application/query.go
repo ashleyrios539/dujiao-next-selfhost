@@ -35,6 +35,7 @@ type HiddenProductRepository interface {
 // StockCounter 是商品库存聚合所需的最小卡密库存端口。
 type StockCounter interface {
 	CountStockByProductIDs(productIDs []uint) ([]cardsecretcontract.SKUStockCount, error)
+	CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCount, error)
 }
 
 // Options 描述 Product 读取应用服务的端口和领域错误。
@@ -196,6 +197,14 @@ func (s *Service) GetAdminByID(id string) (*productdomain.Product, error) {
 		return nil, productcontract.ErrNotFound
 	}
 	return item, nil
+}
+
+// CountPickAttrs 获取商品挑卡可用库存聚合（按 SKU/国家/品牌/种类分组）。
+func (s *Service) CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCount, error) {
+	if s.stock == nil {
+		return nil, nil
+	}
+	return s.stock.CountPickAttrs(productID)
 }
 
 func normalizeStockStatus(raw string) string {

@@ -66,6 +66,10 @@ func (stub stockCounterStub) CountStockByProductIDs([]uint) ([]cardsecretcontrac
 	return stub.counts, nil
 }
 
+func (stub stockCounterStub) CountPickAttrs(uint) ([]cardsecretcontract.PickAttrCount, error) {
+	return nil, nil
+}
+
 func TestListPublicForTenantBuildsVisibilityFilterBeforePagination(t *testing.T) {
 	products := &productRepositoryStub{total: 2}
 	categories := categoryRepositoryStub{

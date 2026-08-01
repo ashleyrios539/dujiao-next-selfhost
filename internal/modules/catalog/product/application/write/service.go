@@ -109,6 +109,8 @@ type CreateProductInput struct {
 	IsAffiliateEnabled  *bool
 	CardCheckEnabled    *bool
 	CardCheckFee        *decimal.Decimal
+	PickEnabled         *bool
+	PickPrices          *map[string]interface{}
 	IsActive            *bool
 	SortOrder           int
 }

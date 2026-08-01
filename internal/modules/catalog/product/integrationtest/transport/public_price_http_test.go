@@ -12,6 +12,7 @@ import (
 	promotiondomain "github.com/dujiao-next/internal/modules/promotion/domain"
 
 	"github.com/dujiao-next/internal/constants"
+	cardsecretcontract "github.com/dujiao-next/internal/modules/cardsecret/contract"
 	productdomain "github.com/dujiao-next/internal/modules/catalog/product/domain"
 	producthttp "github.com/dujiao-next/internal/modules/catalog/product/transport/http"
 	productpresenter "github.com/dujiao-next/internal/modules/catalog/product/transport/presenter"
@@ -42,6 +43,10 @@ func (s staticPublicProductQueries) GetPublicBySlugForTenant(reseller.TenantCont
 
 func (staticPublicProductQueries) ApplyAutoStockCounts([]productdomain.Product) error {
 	return nil
+}
+
+func (staticPublicProductQueries) CountPickAttrs(uint) ([]cardsecretcontract.PickAttrCount, error) {
+	return nil, nil
 }
 
 type emptyRelatedPostReader struct{}

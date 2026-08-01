@@ -310,7 +310,18 @@ func (s *Service) CreateAuto(orderID uint) (*fulfillmentdomain.Fulfillment, erro
 
 				if len(selected) < item.Quantity {
 					need := item.Quantity - len(selected)
-					availableRows, err := secretRepo.ListAvailableByProduct(item.ProductID, item.SKUID, need)
+					pickFilter := cardsecretcontract.PickFilter{
+						Country:   item.PickCountry,
+						Brands:    item.PickBrands,
+						CardTypes: item.PickCardTypes,
+					}
+					var availableRows []cardsecretdomain.Secret
+					var err error
+					if pickFilter.Empty() {
+						availableRows, err = secretRepo.ListAvailableByProduct(item.ProductID, item.SKUID, need)
+					} else {
+						availableRows, err = secretRepo.ListAvailableByProductFiltered(item.ProductID, item.SKUID, pickFilter, need)
+					}
 					if err != nil {
 						return err
 					}

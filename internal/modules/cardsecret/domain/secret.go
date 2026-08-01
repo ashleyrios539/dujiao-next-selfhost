@@ -19,6 +19,9 @@ type Secret struct {
 	BatchID    *uint      `gorm:"index" json:"batch_id,omitempty"`                                              // 批次ID
 	Secret     string     `gorm:"type:text;not null" json:"secret"`                                             // 卡密内容
 	Status     string     `gorm:"not null;index:idx_card_secret_reserve" json:"status"`                         // 状态（available/used）
+	Country    string     `gorm:"column:country;type:varchar(2);default:'';index" json:"country"`               // 卡所属国家（两字母）
+	Brand      string     `gorm:"column:brand;type:varchar(16);default:'';index" json:"brand"`                  // 归一化挑卡品牌（visa/mastercard/discover/other）
+	CardType   string     `gorm:"column:card_type;type:varchar(8);default:'';index" json:"card_type"`           // 挑卡种类（D/PD/C）
 	OrderID    *uint      `gorm:"index" json:"order_id,omitempty"`                                              // 关联订单ID
 	ReservedAt *time.Time `gorm:"index" json:"reserved_at"`                                                     // 占用时间
 	UsedAt     *time.Time `gorm:"index" json:"used_at"`                                                         // 使用时间

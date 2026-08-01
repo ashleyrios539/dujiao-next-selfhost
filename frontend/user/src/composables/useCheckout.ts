@@ -654,6 +654,9 @@ export function useCheckout() {
     quantity: item.quantity,
     fulfillment_type: item.fulfillmentType || undefined,
     card_check_enabled: Boolean(item.cardCheckEnabled) || undefined,
+    pick_country: item.pickCountry || undefined,
+    pick_brands: Array.isArray(item.pickBrands) && item.pickBrands.length ? item.pickBrands : undefined,
+    pick_card_types: Array.isArray(item.pickCardTypes) && item.pickCardTypes.length ? item.pickCardTypes : undefined,
   }))
 
   const buildOrderPayload = () => ({
