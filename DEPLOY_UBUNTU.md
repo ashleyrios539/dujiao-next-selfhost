@@ -372,7 +372,7 @@ sudo systemctl reload nginx
 - **启用测活**：总开关
 - **CheckDx 卡密**：在 dxchecklive.com 购买/充值的卡密（点数凭证）
 - **检测接口（站点）**：填**接口短名**（如 `post5`），可在 CheckDx 网页端"设置/接口"查看，维护中的接口不可用
-- **检测缓冲数量 / 检测超时 / 结果轮询间隔**：按需调整
+- **检测缓冲比例 / 检测超时 / 结果轮询间隔**：按需调整
 
 配置完成后，点卡密输入框旁的 **「测试连接」** 按钮，可立即校验卡密是否有效并显示剩余点数。
 
@@ -421,7 +421,7 @@ curl -s -X PUT https://shop.example.com/api/v1/admin/settings \
 | `enabled` | 是否启用测活 |
 | `kami` | 你在 dxchecklive.com 购买/充值的卡密（点数余额） |
 | `interface` | 使用的检测接口**短名**（`post1`~`post6`，如 `post5`），可在 CheckDx 网页端"设置/接口"查看，维护中的接口不可用 |
-| `buffer` | 每单额外多检测的卡数量（活卡不足时补充，默认 5） |
+| `buffer` | 缓冲**比例**（%）：每轮按当前需求数量的该比例额外多检测；活卡不足时按剩余数量继续按比例补检（默认 5） |
 | `timeout_seconds` | 单次检测最长等待秒数（默认 60，最大 300） |
 | `poll_interval_millis` | 结果轮询间隔毫秒（默认 2000） |
 
@@ -467,10 +467,11 @@ card=4111111111111111 exp=09/26 cvv=123
 **后端行为**：
 - **只对勾选测活（且已付测活价格）的订单项检测**，交付给用户的卡密仅包含 CheckDx 判定为 `Live` 的卡。
 - 未勾选测活的订单项**直接发货不检测**（按原价，可能含死卡）。
+- **按轮迭代测活**：每轮按「购买数量 + 购买数量的缓冲比例」取卡检测；活卡达到购买数量立即停止，未达到则按**剩余数量**继续按比例补检，直到凑够或可用卡耗尽，省点数、不超检。
 - **死卡处理**：`Dead` / `Unknown` / 无法解析的卡自动标记为 `invalid` 状态，不再上架。
 - **故障兜底**：测活 API 不可用或接口维护时**不会误清库存**，订单进入重试；活卡不足时订单按"库存不足"处理并重试。
 - **退点机制**：每次检测任务结束会自动调用 CheckDx 结束接口，未检测到的卡点数自动退回。
-- **日志关键词**：`checkdx_task_started`、`checkdx_task_stopped`、`checkdx_partial_results`、`fulfillment_card_check_done`，用于排查测活情况。
+- **日志关键词**：`checkdx_task_started`、`checkdx_task_cancelled`、`checkdx_partial_results`、`fulfillment_card_check_done`，用于排查测活情况。
 
 ---
 

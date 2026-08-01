@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	cardCheckBufferDefault    = 5
+	cardCheckBufferDefault    = 5 // 缓冲比例（百分比）
 	cardCheckBufferMin        = 0
 	cardCheckBufferMax        = 100
 	cardCheckTimeoutDef       = 60
@@ -22,6 +22,8 @@ const (
 )
 
 // CardCheckConfig 是接入 CheckDx 测活接口的 typed 设置。
+// Buffer 为缓冲比例（百分比 0~100）：每轮按当前需求数量的该比例额外补检；
+// 活卡不足时按剩余数量继续按比例补检，直到凑够所需数量。
 type CardCheckConfig struct {
 	Enabled        bool   `json:"enabled"`
 	Kami           string `json:"kami"`

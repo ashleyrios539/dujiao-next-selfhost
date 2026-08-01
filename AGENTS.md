@@ -114,7 +114,8 @@ reseller:
 | 价格计算 | `internal/modules/order/application/order_service_validate.go` | `buildOrderResult`：测活价并入 basePrice 后参与优惠计算 |
 | 订单项字段 | `internal/modules/order/domain/order_item.go` | `CardCheckEnabled`（用户选择快照，持久化） |
 | 商品字段 | `internal/modules/catalog/product/domain/product.go` | `CardCheckEnabled`（支持测活）、`CardCheckFee`（测活价格） |
-| 测活全局设置 | `internal/modules/settings/schema/integration/cardcheck.go` | `card_check_config`：enabled/kami/interface/country/buffer/timeout/poll；管理后台「设置 → 测活设置」页（`frontend/admin/src/views/admin/components/SettingsCardCheckTab.vue`）编辑 |
+| 测活全局设置 | `internal/modules/settings/schema/integration/cardcheck.go` | `card_check_config`：enabled/kami/interface/buffer（缓冲**比例** %）/timeout/poll；管理后台「设置 → 测活设置」页（`frontend/admin/src/views/admin/components/SettingsCardCheckTab.vue`）编辑 |
+| 测活交付编排 | `internal/modules/fulfillment/application/check.go` | `runCardCheck`/`checkItemCard`：按轮迭代测活，每轮「需求数量 + 需求数量×缓冲比例」取卡，活卡达到购买数量即停，不足按剩余数量按比例继续补检；`cardCheckPool` 按 id 去重取卡 |
 | 商城测活交互 | `frontend/user/src/composables/useProductDetail.ts`、`useCheckout.ts`、`stores/cart.ts` | 勾选开关、两档价格、购物车携带、结算标识 |
 | 管理端测活配置 | `frontend/admin/src/views/admin/components/ProductEditModal.vue`、`Products.vue` | 开关+测活价格输入、列表快捷切换 |
 

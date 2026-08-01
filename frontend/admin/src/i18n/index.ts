@@ -2784,10 +2784,10 @@ const messages = {
             hint: '值为 post1~post6 等短名；接口维护或变更后需同步更新此值，否则检测会失败。',
           },
           buffer: {
-            title: '检测缓冲数量',
-            subtitle: '每单除所需数量外额外多检测的卡数，用于活卡不足时补充。',
-            label: '缓冲数量',
-            hint: '范围 0~100，默认 5。设为 0 表示只检测所需数量。',
+            title: '检测缓冲比例',
+            subtitle: '每轮按当前需求数量的该百分比额外多检测；活卡不足时按剩余数量继续按比例补检，直到凑够所需数量。',
+            label: '缓冲比例（%）',
+            hint: '范围 0~100，默认 5。设为 0 表示只检测所需数量、不足即失败。',
           },
           timeout: {
             title: '检测超时',
@@ -7184,10 +7184,10 @@ const messages = {
             hint: '值為 post1~post6 等短名；介面維護或變更後需同步更新此值，否則檢測會失敗。',
           },
           buffer: {
-            title: '檢測緩衝數量',
-            subtitle: '每單除所需數量外額外多檢測的卡數，用於活卡不足時補充。',
-            label: '緩衝數量',
-            hint: '範圍 0~100，預設 5。設為 0 表示只檢測所需數量。',
+            title: '檢測緩衝比例',
+            subtitle: '每輪按當前需求數量的該百分比額外多檢測；活卡不足時按剩餘數量繼續按比例補檢，直到湊夠所需數量。',
+            label: '緩衝比例（%）',
+            hint: '範圍 0~100，預設 5。設為 0 表示只檢測所需數量、不足即失敗。',
           },
           timeout: {
             title: '檢測逾時',
@@ -11584,10 +11584,10 @@ const messages = {
             hint: 'Use short names such as post1-post6; update this value whenever the interface changes or goes into maintenance.',
           },
           buffer: {
-            title: 'Check Buffer Count',
-            subtitle: 'Extra cards checked per order beyond the required quantity, used when live cards run short.',
-            label: 'Buffer count',
-            hint: 'Range 0-100, default 5. Set to 0 to check only the required quantity.',
+            title: 'Check Buffer Ratio',
+            subtitle: 'Extra cards checked per round as a percentage of the current quantity needed; when live cards run short, keep checking by ratio based on the remaining quantity until the required amount is reached.',
+            label: 'Buffer ratio (%)',
+            hint: 'Range 0-100, default 5. Set to 0 to check only the required quantity and fail when it falls short.',
           },
           timeout: {
             title: 'Check Timeout',
