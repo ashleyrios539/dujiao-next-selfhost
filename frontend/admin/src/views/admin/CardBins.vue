@@ -55,7 +55,8 @@ const brandOptions = [
   { value: 'visa', label: 'Visa' },
   { value: 'mastercard', label: 'Mastercard' },
   { value: 'discover', label: 'Discover' },
-  { value: 'other', label: 'Other' },
+  { value: 'amex', label: 'AMEX' },
+  { value: 'jcb', label: 'JCB' },
 ]
 
 const typeOptions = [

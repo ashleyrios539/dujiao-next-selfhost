@@ -726,7 +726,8 @@ const pickBrandLabel = (brand?: string) => {
     visa: 'Visa',
     mastercard: 'Mastercard',
     discover: 'Discover',
-    other: t('admin.cardSecrets.filters.brandOther'),
+    amex: 'AMEX',
+    jcb: 'JCB',
   }
   return brand ? map[brand] || brand : '-'
 }
@@ -1025,7 +1026,8 @@ onMounted(async () => {
                   <SelectItem value="visa">Visa</SelectItem>
                   <SelectItem value="mastercard">Mastercard</SelectItem>
                   <SelectItem value="discover">Discover</SelectItem>
-                  <SelectItem value="other">{{ t('admin.cardSecrets.filters.brandOther') }}</SelectItem>
+                  <SelectItem value="amex">AMEX</SelectItem>
+                  <SelectItem value="jcb">JCB</SelectItem>
                 </SelectContent>
               </Select>
               <Select v-model="filters.cardType">
