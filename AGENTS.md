@@ -1,4 +1,4 @@
-# AGENTS.md — Dujiao-Next 自动测活版项目说明
+# AGENTS.md — 项目说明
 
 本文件供 AI 助手（opencode 等）在新会话中快速了解本项目。请先阅读本文件再动手修改。
 
@@ -17,7 +17,7 @@ reseller:
   subdomain_base: ""         # 不开子站则无需配置泛解析
 ```
 
-### 本分支的核心改动（对比官方 dujiao-next）
+### 本分支的核心改动
 
 | 模块 | 文件 | 说明 |
 |---|---|---|
@@ -63,7 +63,7 @@ reseller:
 
 ## 项目概览
 
-本项目是开源数字商品销售系统 **Dujiao-Next** 的定制分支，核心新增功能是 **CheckDx 卡片测活** 与 **挑卡**：
+本项目是开源数字商品销售系统的定制分支，核心新增功能是 **CheckDx 卡片测活** 与 **挑卡**：
 
 - 商家可为商品开启"支持测活"并设置"测活价格"
 - 用户在商品页可**自选是否测活**（勾选"开启测活"），两档价格展示（不测活价 / 测活价），界面**禁止出现"加价"字样**
@@ -75,7 +75,7 @@ reseller:
 
 - 本地源码：`C:\Users\Administrator\Documents\Default Project\dujiao-next`
 - GitHub 远端（公开）：`https://github.com/ashleyrios539/dujiaodxcheck_xhenmo01.git`（分支 `main`）
-- 本地 git remote：`origin` 指向官方 `dujiao-next/dujiao-next`，`github` 指向上述远端
+- 本地 git remote：`origin` 指向上游仓库，`github` 指向上述远端
 - 远程一键入口：`install.sh`（拉取并执行 `deploy_ubuntu.sh`），公开 URL：
   `https://raw.githubusercontent.com/ashleyrios539/dujiaodxcheck_xhenmo01/main/install.sh`
 - 部署/更新命令：
