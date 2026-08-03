@@ -23,6 +23,7 @@ type Repository interface {
 	ListAvailableByProductFilteredForUpdate(productID, skuID uint, filter PickFilter, limit int) ([]cardsecretdomain.Secret, error)
 	CountAvailableByProductFiltered(productID, skuID uint, filter PickFilter) (int64, error)
 	CountPickAttrs(productID uint) ([]PickAttrCount, error)
+	CountPickAttrsByBinPrefix(productID uint, bin string) ([]PickAttrCount, error)
 	GetByID(id uint) (*cardsecretdomain.Secret, error)
 	Update(secret *cardsecretdomain.Secret) error
 	BatchUpdateStatus(ids []uint, status string, updatedAt time.Time) (int64, error)

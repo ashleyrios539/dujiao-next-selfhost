@@ -52,6 +52,7 @@ type OrderService struct {
 	resellerAccounting      resellerAccountingTransactions
 	riskControlSvc          orderriskcontract.Controller
 	productMappingService   upstreamStockEnsurer
+	cardBinRepo             cardsecretcontract.CardBinRepository
 	expireMinutes           int
 }
 
@@ -102,6 +103,7 @@ type OrderServiceOptions struct {
 	ResellerAccounting      resellerAccountingTransactions
 	RiskControlService      orderriskcontract.Controller
 	ProductMappingService   upstreamStockEnsurer
+	CardBinRepo             cardsecretcontract.CardBinRepository
 	ExpireMinutes           int
 }
 
@@ -134,6 +136,7 @@ func NewOrderService(opts OrderServiceOptions) *OrderService {
 		resellerAccounting:      opts.ResellerAccounting,
 		riskControlSvc:          opts.RiskControlService,
 		productMappingService:   opts.ProductMappingService,
+		cardBinRepo:             opts.CardBinRepo,
 		expireMinutes:           opts.ExpireMinutes,
 	}
 }

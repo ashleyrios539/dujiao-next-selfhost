@@ -108,6 +108,8 @@ func (c *Container) initApplicationServices() {
 		ResellerPricingResolver: c.ResellerPricingResolver,
 		ResellerAccounting:      c.ResellerAccountingLedger,
 		RiskControlService:      c.OrderRiskControlService,
+		ProductMappingService:   c.ProductMappingService,
+		CardBinRepo:             c.CardBinRepo,
 		ExpireMinutes:           c.Config.Order.PaymentExpireMinutes,
 	})
 	c.FulfillmentService = fulfillmentapp.New(fulfillmentapp.Options{
