@@ -26,9 +26,14 @@ func (value *JSON) Scan(source interface{}) error {
 		*value = make(JSON)
 		return nil
 	}
-	bytes, ok := source.([]byte)
-	if !ok {
+	var raw []byte
+	switch v := source.(type) {
+	case []byte:
+		raw = v
+	case string:
+		raw = []byte(v)
+	default:
 		return nil
 	}
-	return json.Unmarshal(bytes, value)
+	return json.Unmarshal(raw, value)
 }
