@@ -288,32 +288,6 @@
                   </div>
                 </div>
 
-              <!-- 测活选项：用户自选是否测活，仅展示测活/不测活两档价格 -->
-              <div v-if="product.card_check_enabled" class="mb-8">
-                <h2 class="mb-3 text-sm font-bold uppercase tracking-widest text-muted-foreground">
-                  {{ t('productDetail.cardCheckSectionTitle') }}
-                </h2>
-                <label class="flex cursor-pointer items-center gap-2">
-                  <input
-                    id="card_check_enabled"
-                    v-model="cardCheckEnabled"
-                    type="checkbox"
-                    class="h-4 w-4 shrink-0 rounded border-input"
-                  />
-                  <span class="text-sm font-medium">{{ t('productDetail.cardCheckLabel') }}</span>
-                </label>
-                <div class="mt-3 flex flex-wrap items-end gap-x-8 gap-y-2">
-                  <div>
-                    <div class="text-xs text-muted-foreground">{{ t('productDetail.cardCheckPlainPrice') }}</div>
-                    <div class="theme-price-lg" :class="cardCheckEnabled ? 'text-muted-foreground' : 'text-primary'">{{ formatPrice(cardCheckPlainPrice, siteCurrency) }}</div>
-                  </div>
-                  <div>
-                    <div class="text-xs text-muted-foreground">{{ t('productDetail.cardCheckCheckedPrice') }}</div>
-                    <div class="theme-price-lg" :class="cardCheckEnabled ? 'text-primary' : 'text-muted-foreground'">{{ formatPrice(cardCheckCheckedPrice, siteCurrency) }}</div>
-                  </div>
-                </div>
-              </div>
-
               <!-- 挑卡：三种模式——随机购买/挑头购买/挑卡种类 -->
               <div v-if="pickEnabled" class="mb-8">
                 <h2 class="mb-3 text-sm font-bold uppercase tracking-widest text-muted-foreground">
@@ -442,15 +416,35 @@
                     <span class="font-medium text-foreground">{{ pickSelectionSummary || t('productDetail.pickSelectionEmpty') }}</span>
                   </div>
 
-                  <!-- 加价 -->
-                  <div v-if="pickUnitSurcharge > 0" class="flex flex-wrap items-end gap-x-8 gap-y-2">
-                    <div>
-                      <div class="text-xs text-muted-foreground">{{ t('productDetail.pickUnitPrice') }}</div>
-                      <div class="theme-price-lg text-primary">{{ formatPrice(pickUnitPrice, siteCurrency) }}</div>
-                    </div>
-                    <div class="pb-1 text-xs text-muted-foreground">
-                      {{ t('productDetail.pickSurcharge', { amount: formatPrice(pickUnitSurcharge, siteCurrency) }) }}
-                    </div>
+                  <!-- 加价提示（最终单价在下方测活区统一展示） -->
+                  <p v-if="pickUnitSurcharge > 0" class="text-xs text-muted-foreground">
+                    {{ t('productDetail.pickSurcharge', { amount: formatPrice(pickUnitSurcharge, siteCurrency) }) }}
+                  </p>
+                </div>
+              </div>
+
+              <!-- 测活选项：位于挑卡模块下方，统一展示最终单价两档（含挑卡加价） -->
+              <div v-if="product.card_check_enabled" class="mb-8">
+                <h2 class="mb-3 text-sm font-bold uppercase tracking-widest text-muted-foreground">
+                  {{ t('productDetail.cardCheckSectionTitle') }}
+                </h2>
+                <label class="flex cursor-pointer items-center gap-2">
+                  <input
+                    id="card_check_enabled"
+                    v-model="cardCheckEnabled"
+                    type="checkbox"
+                    class="h-4 w-4 shrink-0 rounded border-input"
+                  />
+                  <span class="text-sm font-medium">{{ t('productDetail.cardCheckLabel') }}</span>
+                </label>
+                <div class="mt-3 flex flex-wrap items-end gap-x-8 gap-y-2">
+                  <div>
+                    <div class="text-xs text-muted-foreground">{{ t('productDetail.cardCheckPlainPrice') }}</div>
+                    <div class="theme-price-lg" :class="cardCheckEnabled ? 'text-muted-foreground' : 'text-primary'">{{ formatPrice(finalPlainPrice, siteCurrency) }}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-muted-foreground">{{ t('productDetail.cardCheckCheckedPrice') }}</div>
+                    <div class="theme-price-lg" :class="cardCheckEnabled ? 'text-primary' : 'text-muted-foreground'">{{ formatPrice(finalCheckedPrice, siteCurrency) }}</div>
                   </div>
                 </div>
               </div>
@@ -624,13 +618,13 @@ const {
   formatPromotionRule, formatWholesaleTier, formatRelatedPostDate, normalizeSkuId,
   loading, product, relatedPosts, currentImage, selectedSkuId, quantity, purchaseWarning,
   activeSkus, selectedSku,
-  cardCheckEnabled, cardCheckPlainPrice, cardCheckCheckedPrice,
+  cardCheckEnabled, finalPlainPrice, finalCheckedPrice,
   pickEnabled, pickCountry, pickBrands, pickCardTypes, pickStockLoading,
   pickBrandOptions, pickTypeOptions, togglePickBrand, togglePickType, pickSelectionSummary,
   isPickBothRandom,
   pickMode, pickBin, binStockCount, binStockLoading, selectPickMode,
   countrySearch, countryDropdownOpen, selectCountry, onCountryBlur, filteredCountries, selectedCountryName,
-  pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
+  pickAvailableCount, pickUnitSurcharge,
   selectedSkuMemberPrice, hasMemberPrice,
   hasSelectedSkuWholesalePrice, selectedSkuWholesaleFinalIsMember, selectedSkuWholesaleFinalPrice,
   selectedSkuWholesaleRules,

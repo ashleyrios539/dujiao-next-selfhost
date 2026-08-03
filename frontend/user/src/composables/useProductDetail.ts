@@ -815,6 +815,11 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
 
   const pickUnitPrice = computed<number>(() => cardCheckPlainPrice.value + pickUnitSurcharge.value)
 
+  // 最终单价（含挑卡加价）：测活区两档价格统一在此基础上叠加测活费，
+  // 避免页面上出现“基础价 / 测活价 / 挑卡单价”多处割裂的价格。
+  const finalPlainPrice = computed<number>(() => cardCheckPlainPrice.value + pickUnitSurcharge.value)
+  const finalCheckedPrice = computed<number>(() => finalPlainPrice.value + cardCheckFeeAmount.value)
+
   const pickSelectionSummary = computed(() => {
     if (!pickCountry.value && !pickBin.value) return ''
     const parts: string[] = []
@@ -925,6 +930,7 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     activeSkus, selectedSku,
     // 测活
     cardCheckEnabled, cardCheckFeeAmount, cardCheckPlainPrice, cardCheckCheckedPrice,
+    finalPlainPrice, finalCheckedPrice,
     // 挑卡
     pickEnabled, pickCountry, pickBrands, pickCardTypes, pickStockLoading,
     pickBrandOptions, pickTypeOptions, togglePickBrand, togglePickType, pickSelectionSummary,
