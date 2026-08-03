@@ -789,12 +789,17 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     // 「随机」视为不限：跳过该维度筛选
     const brandFilter = pickBrands.value.filter((b) => b !== PICK_RANDOM)
     const typeFilter = pickCardTypes.value.filter((t) => t !== PICK_RANDOM)
+    // D（含预付）是超集：匹配 D 与纯 D（PD）。
+    const typeMatches = (cardType: string) => {
+      if (typeFilter.length === 0) return true
+      return typeFilter.some((t) => t === cardType || (t === 'D' && cardType === 'PD'))
+    }
     let total = 0
     for (const item of pickStockItems.value) {
       if (String(item.country || '') !== pickCountry.value) continue
       if (skuId > 0 && normalizeSkuId(item.sku_id) !== skuId) continue
       if (brandFilter.length > 0 && !brandFilter.includes(String(item.brand || ''))) continue
-      if (typeFilter.length > 0 && !typeFilter.includes(String(item.card_type || ''))) continue
+      if (!typeMatches(String(item.card_type || ''))) continue
       total += Number(item.total || 0)
     }
     return total

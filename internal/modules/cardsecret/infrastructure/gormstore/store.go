@@ -231,6 +231,21 @@ func (r *Store) ListAvailableByProductBatchForUpdate(productID, skuID, batchID u
 	return rows, nil
 }
 
+// expandPickCardTypes 展开挑卡种类：D（含预付）为超集，等价匹配 D 与 PD（纯D）。
+func expandPickCardTypes(cardTypes []string) []string {
+	expanded := make([]string, 0, len(cardTypes))
+	for _, ct := range cardTypes {
+		value := strings.ToUpper(strings.TrimSpace(ct))
+		switch value {
+		case cardsecretdomain.CardTypeD:
+			expanded = append(expanded, cardsecretdomain.CardTypeD, cardsecretdomain.CardTypePD)
+		default:
+			expanded = append(expanded, value)
+		}
+	}
+	return expanded
+}
+
 func (r *Store) buildPickQuery(productID, skuID uint, filter cardsecretcontract.PickFilter) *gorm.DB {
 	query := r.db.Model(&cardsecretdomain.Secret{}).
 		Where("product_id = ? AND status = ? AND deleted_at IS NULL", productID, cardsecretdomain.StatusAvailable)
@@ -244,7 +259,9 @@ func (r *Store) buildPickQuery(productID, skuID uint, filter cardsecretcontract.
 		query = query.Where("brand IN ?", filter.Brands)
 	}
 	if len(filter.CardTypes) > 0 {
-		query = query.Where("card_type IN ?", filter.CardTypes)
+		// D（含预付）是超集：覆盖 D 与纯 D（PD）。
+		expanded := expandPickCardTypes(filter.CardTypes)
+		query = query.Where("card_type IN ?", expanded)
 	}
 	if bin := strings.TrimSpace(filter.BinPrefix); bin != "" {
 		query = query.Where("bin_prefix = ?", bin)
