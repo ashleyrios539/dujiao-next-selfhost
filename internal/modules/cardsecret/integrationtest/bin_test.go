@@ -82,7 +82,7 @@ func TestImportCardBinsParsesRealHeaderAndNormalizes(t *testing.T) {
 		"411111": {BIN: "411111", Country: "GB", Brand: cardsecretdomain.PickBrandVisa, CardType: cardsecretdomain.CardTypeC},
 		"550000": {BIN: "550000", Country: "CA", Brand: cardsecretdomain.PickBrandMastercard, CardType: cardsecretdomain.CardTypeD},
 		"601100": {BIN: "601100", Country: "AU", Brand: cardsecretdomain.PickBrandDiscover, CardType: cardsecretdomain.CardTypePD},
-		"999999": {BIN: "999999", Country: "DE", Brand: cardsecretdomain.PickBrandOther, CardType: cardsecretdomain.CardTypeC},
+		"999999": {BIN: "999999", Country: "DE", Brand: cardsecretdomain.PickBrandAmex, CardType: cardsecretdomain.CardTypeC},
 		"440000": {BIN: "440000", Country: "CA", Brand: cardsecretdomain.PickBrandVisa, CardType: cardsecretdomain.CardTypeD},
 		"445555": {BIN: "445555", Country: "US", Brand: cardsecretdomain.PickBrandVisa, CardType: cardsecretdomain.CardTypePD},
 	}
@@ -170,9 +170,9 @@ func TestCreateCardSecretBatchAnnotatesFromBinLibrary(t *testing.T) {
 	if visa.Country != "US" || visa.Brand != cardsecretdomain.PickBrandVisa || visa.CardType != cardsecretdomain.CardTypePD {
 		t.Errorf("visa card annotation mismatch: %+v", visa)
 	}
-	other := bySecret["9999990100100010|12|2027|123"]
-	if other.Country != "DE" || other.Brand != cardsecretdomain.PickBrandOther || other.CardType != cardsecretdomain.CardTypeC {
-		t.Errorf("other card annotation mismatch: %+v", other)
+	amex := bySecret["9999990100100010|12|2027|123"]
+	if amex.Country != "DE" || amex.Brand != cardsecretdomain.PickBrandAmex || amex.CardType != cardsecretdomain.CardTypeC {
+		t.Errorf("amex card annotation mismatch: %+v", amex)
 	}
 	unmatched := bySecret["NOT-A-CARD"]
 	if unmatched.Country != "" || unmatched.Brand != "" || unmatched.CardType != "" {

@@ -93,7 +93,8 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     { value: 'visa', label: 'Visa' },
     { value: 'mastercard', label: 'Mastercard' },
     { value: 'discover', label: 'Discover' },
-    { value: 'other', label: t('productDetail.pickBrandOther') },
+    { value: 'amex', label: 'AMEX' },
+    { value: 'jcb', label: 'JCB' },
   ]
 
   const pickTypeOptions = [

@@ -20,8 +20,10 @@ const (
 	PickBrandMastercard = "mastercard"
 	// PickBrandDiscover Discover
 	PickBrandDiscover = "discover"
-	// PickBrandOther 其他（含无法识别/未命中）
-	PickBrandOther = "other"
+	// PickBrandAmex AMEX（美国运通）
+	PickBrandAmex = "amex"
+	// PickBrandJCB JCB
+	PickBrandJCB = "jcb"
 )
 
 // ValidCardType 判断是否为合法的挑卡种类。
@@ -36,7 +38,7 @@ func ValidCardType(value string) bool {
 // ValidPickBrand 判断是否为合法的挑卡品牌。
 func ValidPickBrand(value string) bool {
 	switch value {
-	case PickBrandVisa, PickBrandMastercard, PickBrandDiscover, PickBrandOther:
+	case PickBrandVisa, PickBrandMastercard, PickBrandDiscover, PickBrandAmex, PickBrandJCB:
 		return true
 	}
 	return false
@@ -52,8 +54,12 @@ func NormalizePickBrand(raw string) string {
 		return PickBrandMastercard
 	case strings.Contains(text, "DISCOVER"):
 		return PickBrandDiscover
+	case strings.Contains(text, "AMEX"), strings.Contains(text, "AMERICAN EXPRESS"):
+		return PickBrandAmex
+	case strings.Contains(text, "JCB"):
+		return PickBrandJCB
 	}
-	return PickBrandOther
+	return ""
 }
 
 // NormalizeCardType 把 BIN 库卡片分类到挑卡种类三值：

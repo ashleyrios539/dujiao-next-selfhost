@@ -68,7 +68,8 @@ const (
 	PickPriceKeyVisa       = "visa"
 	PickPriceKeyMastercard = "mastercard"
 	PickPriceKeyDiscover   = "discover"
-	PickPriceKeyOther      = "other"
+	PickPriceKeyAmex       = "amex"
+	PickPriceKeyJCB        = "jcb"
 	PickPriceKeyTypeD      = "D"
 	PickPriceKeyTypePD     = "PD"
 	PickPriceKeyTypeC      = "C"
@@ -76,7 +77,7 @@ const (
 )
 
 var pickPriceKeys = []string{
-	PickPriceKeyVisa, PickPriceKeyMastercard, PickPriceKeyDiscover, PickPriceKeyOther,
+	PickPriceKeyVisa, PickPriceKeyMastercard, PickPriceKeyDiscover, PickPriceKeyAmex, PickPriceKeyJCB,
 	PickPriceKeyTypeD, PickPriceKeyTypePD, PickPriceKeyTypeC,
 	PickPriceKeyBin,
 }

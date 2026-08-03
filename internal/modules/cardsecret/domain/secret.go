@@ -20,7 +20,7 @@ type Secret struct {
 	Secret     string     `gorm:"type:text;not null" json:"secret"`                                             // 卡密内容
 	Status     string     `gorm:"not null;index:idx_card_secret_reserve" json:"status"`                         // 状态（available/used）
 	Country    string     `gorm:"column:country;type:varchar(2);default:'';index" json:"country"`               // 卡所属国家（两字母）
-	Brand      string     `gorm:"column:brand;type:varchar(16);default:'';index" json:"brand"`                  // 归一化挑卡品牌（visa/mastercard/discover/other）
+	Brand      string     `gorm:"column:brand;type:varchar(16);default:'';index" json:"brand"`                  // 归一化挑卡品牌（visa/mastercard/discover/amex/jcb）
 	CardType   string     `gorm:"column:card_type;type:varchar(8);default:'';index" json:"card_type"`           // 挑卡种类（D/PD/C）
 	BinPrefix  string     `gorm:"column:bin_prefix;type:varchar(6);default:'';index" json:"bin_prefix"`         // 卡号前6位（挑头过滤用）
 	OrderID    *uint      `gorm:"index" json:"order_id,omitempty"`                                              // 关联订单ID

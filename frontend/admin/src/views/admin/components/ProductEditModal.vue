@@ -354,7 +354,7 @@ const parseManualFormSchemaForEdit = (rawSchema: Record<string, unknown> | null 
   return { fields }
 }
 
-const pickPriceKeys = ['bin', 'visa', 'mastercard', 'discover', 'other', 'D', 'PD', 'C']
+const pickPriceKeys = ['bin', 'visa', 'mastercard', 'discover', 'amex', 'jcb', 'D', 'PD', 'C']
 
 const normalizePickPrices = (raw: Record<string, string> | null | undefined): Record<string, number> => {
   const result: Record<string, number> = {}

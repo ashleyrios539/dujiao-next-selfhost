@@ -210,7 +210,7 @@
     "pickHeadLabel": "挑卡（依品牌 / 種類）",
     "pickBrandLabel": "品牌",
     "pickBrandRandom": "隨機",
-    "pickBrandOther": "其他",
+    "pickBrandAmex": "AMEX",
     "pickTypeLabel": "卡種類",
     "pickTypeRandom": "隨機",
     "pickTypeD": "D卡（含預付）",

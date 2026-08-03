@@ -210,7 +210,7 @@
     "pickHeadLabel": "Pick card (by brand / type)",
     "pickBrandLabel": "Brand",
     "pickBrandRandom": "Random",
-    "pickBrandOther": "Other",
+    "pickBrandAmex": "AMEX",
     "pickTypeLabel": "Card type",
     "pickTypeRandom": "Random",
     "pickTypeD": "D (incl. prepaid)",
