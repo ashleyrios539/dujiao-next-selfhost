@@ -148,19 +148,13 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 				}
 			}
 		}
-		// 挑头（BIN）模式：按该 BIN 前缀在 BIN 库中的品牌/种类计算加价。
-		if pickBin != "" && s.cardBinRepo != nil {
-			if bins, err := s.cardBinRepo.FindByBins([]string{pickBin}); err == nil && len(bins) > 0 {
-				matchedBin := bins[0]
-				if matchedBin.Brand != "" {
-					pickBrands = []string{matchedBin.Brand}
-				}
-				if matchedBin.CardType != "" {
-					pickCardTypes = []string{matchedBin.CardType}
-				}
-			}
+		// 挑头（BIN）模式：加价独立配置在 pick_prices["bin"]，与其他品牌/种类加价互不影响。
+		var pickSurcharge decimal.Decimal
+		if pickBin != "" {
+			pickSurcharge = productdomain.PickUnitSurcharge(product.PickPrices, []string{productdomain.PickPriceKeyBin}, nil)
+		} else {
+			pickSurcharge = productdomain.PickUnitSurcharge(product.PickPrices, pickBrands, pickCardTypes)
 		}
-		pickSurcharge := productdomain.PickUnitSurcharge(product.PickPrices, pickBrands, pickCardTypes)
 		if pickSurcharge.IsPositive() {
 			basePrice = basePrice.Add(pickSurcharge).Round(2)
 		}

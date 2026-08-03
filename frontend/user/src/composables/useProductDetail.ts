@@ -83,8 +83,6 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
   const pickBin = ref('')
   const binStockCount = ref<number | null>(null)
   const binStockLoading = ref(false)
-  // 挑头（BIN）模式：该 BIN 前缀下可用卡密的品牌/种类分布（用于加价计算）。
-  const binAttrs = ref<any[]>([])
   const countrySearch = ref('')
   const countryDropdownOpen = ref(false)
 
@@ -818,10 +816,8 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
       return max
     }
     if (pickMode.value === 'bin') {
-      // 挑头（BIN）模式：按该 BIN 前缀下可用卡密的品牌/种类取最大加价。
-      const brands = Array.from(new Set(binAttrs.value.map((a: any) => String(a.brand || '').trim()).filter(Boolean)))
-      const types = Array.from(new Set(binAttrs.value.map((a: any) => String(a.card_type || '').trim()).filter(Boolean)))
-      return Number((maxBy(brands) + maxBy(types)).toFixed(2))
+      // 挑头（BIN）模式：加价独立配置在 pick_prices["bin"]。
+      return Number((maxBy(['bin']) + 0).toFixed(2))
     }
     return Number((maxBy(pickBrands.value) + maxBy(pickCardTypes.value)).toFixed(2))
   })
@@ -838,14 +834,6 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     const parts: string[] = []
     if (pickBin.value) {
       parts.push(`BIN ${pickBin.value}`)
-      const brands = Array.from(new Set(binAttrs.value.map((a: any) => String(a.brand || '').trim()).filter(Boolean)))
-      const types = Array.from(new Set(binAttrs.value.map((a: any) => String(a.card_type || '').trim()).filter(Boolean)))
-      if (brands.length) {
-        parts.push(brands.map((b) => pickBrandOptions.find((o) => o.value === b)?.label || b).join('、'))
-      }
-      if (types.length) {
-        parts.push(types.map((ty) => pickTypeOptions.find((o) => o.value === ty)?.label || ty).join('、'))
-      }
     } else {
       const country = availableCountries.value.find((c) => String(c.code) === pickCountry.value)
       parts.push(country ? `${country.name} ${country.code}` : pickCountry.value)
@@ -869,7 +857,6 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     pickCardTypes.value = []
     pickBin.value = ''
     binStockCount.value = null
-    binAttrs.value = []
     countrySearch.value = ''
   }
 
@@ -908,10 +895,8 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
       try {
         const response = await productAPI.pickStock(product.value.slug, pickBin.value)
         binStockCount.value = Number(response.data.data?.bin_total ?? 0)
-        binAttrs.value = Array.isArray(response.data.data?.attrs) ? response.data.data.attrs : []
       } catch {
         binStockCount.value = 0
-        binAttrs.value = []
       } finally {
         binStockLoading.value = false
       }
@@ -932,7 +917,6 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     pickCardTypes.value = []
     pickBin.value = ''
     binStockCount.value = null
-    binAttrs.value = []
     countrySearch.value = ''
     countryDropdownOpen.value = false
   }

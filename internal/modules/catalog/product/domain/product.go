@@ -72,11 +72,13 @@ const (
 	PickPriceKeyTypeD      = "D"
 	PickPriceKeyTypePD     = "PD"
 	PickPriceKeyTypeC      = "C"
+	PickPriceKeyBin        = "bin"
 )
 
 var pickPriceKeys = []string{
 	PickPriceKeyVisa, PickPriceKeyMastercard, PickPriceKeyDiscover, PickPriceKeyOther,
 	PickPriceKeyTypeD, PickPriceKeyTypePD, PickPriceKeyTypeC,
+	PickPriceKeyBin,
 }
 
 // NormalizePickPrices 归一化挑卡属性加价表：仅保留已知键，金额保留两位小数，负数归零。

@@ -36,7 +36,6 @@ type PublicProductQueries interface {
 	ApplyAutoStockCounts(products []productdomain.Product) error
 	CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCount, error)
 	CountAvailableByBinPrefix(productID uint, bin string) (int64, error)
-	CountPickAttrsByBinPrefix(productID uint, bin string) ([]cardsecretcontract.PickAttrCount, error)
 }
 
 // ResellerDisplayPricer 是分销站展示价解析端口。
@@ -237,12 +236,7 @@ func (h *PublicHandler) GetProductPickStock(c *gin.Context) {
 			ginutil.RespondError(c, response.CodeInternal, "error.product_fetch_failed", err)
 			return
 		}
-		attrs, err := h.products.CountPickAttrsByBinPrefix(product.ID, bin)
-		if err != nil {
-			ginutil.RespondError(c, response.CodeInternal, "error.product_fetch_failed", err)
-			return
-		}
-		response.Success(c, gin.H{"bin_total": total, "attrs": attrs})
+		response.Success(c, gin.H{"bin_total": total})
 		return
 	}
 

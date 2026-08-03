@@ -324,22 +324,6 @@ func (r *Store) CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCou
 	return rows, nil
 }
 
-// CountPickAttrsByBinPrefix 按商品/SKU/品牌/种类聚合指定 BIN 前缀下的可用卡密数量。
-func (r *Store) CountPickAttrsByBinPrefix(productID uint, bin string) ([]cardsecretcontract.PickAttrCount, error) {
-	if productID == 0 || bin == "" {
-		return []cardsecretcontract.PickAttrCount{}, nil
-	}
-	var rows []cardsecretcontract.PickAttrCount
-	if err := r.db.Model(&cardsecretdomain.Secret{}).
-		Select("product_id, sku_id, country, brand, card_type, COUNT(*) as total").
-		Where("product_id = ? AND status = ? AND deleted_at IS NULL AND bin_prefix = ?", productID, cardsecretdomain.StatusAvailable, bin).
-		Group("product_id, sku_id, country, brand, card_type").
-		Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-	return rows, nil
-}
-
 // GetByID 根据 ID 获取卡密
 func (r *Store) GetByID(id uint) (*cardsecretdomain.Secret, error) {
 	var secret cardsecretdomain.Secret
