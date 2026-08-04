@@ -18,26 +18,37 @@ import (
 const (
 	purchaseStepBrowseCategory = "browse_category" // 浏览分类
 	purchaseStepBrowseProduct  = "browse_product"  // 浏览商品列表
-	purchaseStepProductDetail  = "product_detail"  // 商品详情/数量/挑头/测活
-	purchaseStepConfirm        = "confirm"         // 确认下单
+	purchaseStepConfigure       = "configure"       // 商品配置面板
+	purchaseStepPickMode        = "pick_mode"       // 挑卡模式选择
+	purchaseStepPickCountry     = "pick_country"    // 选国家
+	purchaseStepPickBrand       = "pick_brand"      // 选品牌（type 模式）
+	purchaseStepPickCardType    = "pick_card_type"  // 选卡类型（type 模式）
+	purchaseStepPickBin         = "pick_bin"        // 输入 BIN
+	purchaseStepConfirm         = "confirm"         // 确认下单
 )
 
 // 回调 data 前缀。
 const (
-	cbShopPrefix = "shop:"
-	cbCatPrefix  = "shop:cat:"
-	cbProdPrefix = "shop:prod:"
-	cbSkuPrefix  = "shop:sku:"
-	cbCcPrefix   = "shop:cc:"
-	cbQtyPrefix  = "shop:qty:"
-	cbConfirm    = "shop:confirm"
-	cbPayBalance = "shop:pay:balance"
-	cbPayOnline  = "shop:pay:online"
-	cbBackCat    = "shop:back:cat"
-	cbBackProd   = "shop:back:prod"
-	cbBackDetail = "shop:back:detail"
-	cbCancel     = "shop:cancel"
-	cbHelpBuy    = "shop:help"
+	cbShopPrefix     = "shop:"
+	cbCatPrefix      = "shop:cat:"
+	cbProdPrefix     = "shop:prod:"
+	cbSkuPrefix      = "shop:sku:"
+	cbCcPrefix       = "shop:cc:"
+	cbQtyPrefix      = "shop:qty:"
+	cbPickModePrefix = "shop:pick:"
+	cbCountryPrefix  = "shop:country:"
+	cbBrandPrefix    = "shop:brand:"
+	cbCTypePrefix    = "shop:ctype:"
+	cbConfirm        = "shop:confirm"
+	cbPayBalance     = "shop:pay:balance"
+	cbPayOnline      = "shop:pay:online"
+	cbBackCat        = "shop:back:cat"
+	cbBackProd       = "shop:back:prod"
+	cbBackDetail     = "shop:back:detail"
+	cbBackPick       = "shop:back:pick"
+	cbBackCountry    = "shop:back:country"
+	cbCancel         = "shop:cancel"
+	cbHelpBuy        = "shop:help"
 )
 
 // purchaseSession 单个 chat 的购买会话状态（仅在 mu 持有下读写）。
@@ -53,7 +64,14 @@ type purchaseSession struct {
 	selected      *contract.ShopProduct
 	selectedSKUID uint
 	quantity      int
-	pickBin       string
+	// 挑卡
+	pickMode     contract.PickMode
+	pickCountry  string
+	pickBrand    string
+	pickCardType string
+	pickBin      string
+	pickStock    *contract.ShopPickStock
+	// 测活
 	cardCheck     bool
 	lastUpdatedAt time.Time
 }
@@ -71,7 +89,12 @@ type purchaseView struct {
 	selected      *contract.ShopProduct
 	selectedSKUID uint
 	quantity      int
-	pickBin       string
+	pickMode     contract.PickMode
+	pickCountry  string
+	pickBrand    string
+	pickCardType string
+	pickBin      string
+	pickStock    *contract.ShopPickStock
 	cardCheck     bool
 }
 
@@ -82,7 +105,7 @@ func (s *purchaseService) snapshot(chatID int64) *purchaseView {
 	if !ok {
 		return nil
 	}
-	view := &purchaseView{
+	return &purchaseView{
 		chatID:        sess.chatID,
 		userID:        sess.userID,
 		locale:        sess.locale,
@@ -94,13 +117,17 @@ func (s *purchaseService) snapshot(chatID int64) *purchaseView {
 		selected:      sess.selected,
 		selectedSKUID: sess.selectedSKUID,
 		quantity:      sess.quantity,
-		pickBin:       sess.pickBin,
+		pickMode:     sess.pickMode,
+		pickCountry:  sess.pickCountry,
+		pickBrand:    sess.pickBrand,
+		pickCardType: sess.pickCardType,
+		pickBin:      sess.pickBin,
+		pickStock:    sess.pickStock,
 		cardCheck:     sess.cardCheck,
 	}
-	return view
 }
 
-// purchaseService 实现 bot 内购买流程（浏览分类→商品→挑头/测活→确认→下单→支付）。
+// purchaseService 实现 bot 内购买流程（浏览分类→商品→分步配置→确认→下单→支付）。
 type purchaseService struct {
 	ports  contract.PurchasePorts
 	botapi contract.BotAPIClient
@@ -144,8 +171,10 @@ func (s *purchaseService) handleMessage(ctx context.Context, token string, msg *
 	if view == nil {
 		return false, nil
 	}
-	if view.step == purchaseStepProductDetail {
-		return true, s.handleDetailText(ctx, token, view, text)
+	// 配置面板中的文本输入：BIN 或国家双字母
+	if view.step == purchaseStepConfigure || view.step == purchaseStepPickBin ||
+		view.step == purchaseStepPickCountry || view.step == purchaseStepPickBrand {
+		return true, s.handleConfigureText(ctx, token, view, text)
 	}
 	return false, nil
 }
@@ -175,12 +204,24 @@ func (s *purchaseService) handleCallback(ctx context.Context, token string, cb *
 		return true, s.backToProducts(ctx, token, chatID)
 	case data == cbBackDetail:
 		return true, s.renderDetail(ctx, token, chatID)
+	case data == cbBackPick:
+		return true, s.renderPickMode(ctx, token, chatID)
+	case data == cbBackCountry:
+		return true, s.renderPickCountry(ctx, token, chatID)
 	case strings.HasPrefix(data, cbSkuPrefix):
 		return true, s.selectSKU(ctx, token, chatID, strings.TrimPrefix(data, cbSkuPrefix))
-	case strings.HasPrefix(data, cbCcPrefix):
-		return true, s.toggleCardCheck(ctx, token, chatID, strings.TrimPrefix(data, cbCcPrefix) == "1")
 	case strings.HasPrefix(data, cbQtyPrefix):
 		return true, s.setQuantity(ctx, token, chatID, strings.TrimPrefix(data, cbQtyPrefix))
+	case strings.HasPrefix(data, cbPickModePrefix):
+		return true, s.selectPickMode(ctx, token, chatID, strings.TrimPrefix(data, cbPickModePrefix))
+	case strings.HasPrefix(data, cbCountryPrefix):
+		return true, s.selectCountry(ctx, token, chatID, strings.TrimPrefix(data, cbCountryPrefix))
+	case strings.HasPrefix(data, cbBrandPrefix):
+		return true, s.selectBrand(ctx, token, chatID, strings.TrimPrefix(data, cbBrandPrefix))
+	case strings.HasPrefix(data, cbCTypePrefix):
+		return true, s.selectCardType(ctx, token, chatID, strings.TrimPrefix(data, cbCTypePrefix))
+	case strings.HasPrefix(data, cbCcPrefix):
+		return true, s.toggleCardCheck(ctx, token, chatID, strings.TrimPrefix(data, cbCcPrefix) == "1")
 	case data == cbConfirm:
 		return true, s.confirmOrder(ctx, token, chatID)
 	case data == cbPayBalance:
@@ -316,24 +357,36 @@ func (s *purchaseService) handleProductCallback(ctx context.Context, token strin
 	return s.selectProduct(ctx, token, chatID, payload)
 }
 
+// selectProduct 进入商品配置面板。
 func (s *purchaseService) selectProduct(ctx context.Context, token string, chatID int64, slug string) error {
 	product, err := s.ports.Catalog.GetProductBySlug(ctx, slug)
 	if err != nil {
 		return s.sendError(ctx, token, chatID, err, "purchase.error")
 	}
+	// 预取挑卡可选维度（商品支持挑卡时）
+	var pickStock *contract.ShopPickStock
+	if product.PickEnabled && s.ports.Catalog != nil {
+		pickStock, _ = s.ports.Catalog.GetPickStock(ctx, product.ID)
+	}
 	s.mu.Lock()
 	if sess := s.sessions[chatID]; sess != nil {
-		sess.step = purchaseStepProductDetail
+		sess.step = purchaseStepConfigure
 		sess.selected = product
 		sess.selectedSKUID = 0
 		sess.quantity = 1
+		sess.pickMode = ""
+		sess.pickCountry = ""
+		sess.pickBrand = ""
+		sess.pickCardType = ""
 		sess.pickBin = ""
+		sess.pickStock = pickStock
 		sess.cardCheck = false
 	}
 	s.mu.Unlock()
 	return s.renderDetail(ctx, token, chatID)
 }
 
+// renderDetail 渲染商品配置面板（当前选择摘要 + 两档价格 + 上下文按钮）。
 func (s *purchaseService) renderDetail(ctx context.Context, token string, chatID int64) error {
 	view := s.snapshot(chatID)
 	if view == nil || view.selected == nil {
@@ -343,22 +396,133 @@ func (s *purchaseService) renderDetail(ctx context.Context, token string, chatID
 
 	var sb strings.Builder
 	sb.WriteString("🛍️ " + product.Title + "\n\n")
+
+	// 价格区
 	sb.WriteString(s.t(view, "purchase.price") + " " + formatAmount(product.PriceAmount, product.Currency) + "\n")
-	if product.CardCheckEnabled {
-		sb.WriteString(s.t(view, "purchase.card_check") + " +" + formatAmount(product.CardCheckFee, product.Currency) + "\n")
+
+	// 当前选择摘要
+	sb.WriteString("\n" + s.t(view, "purchase.current") + "\n")
+	if len(product.SKUs) > 0 {
+		skuCode := ""
+		for _, sku := range product.SKUs {
+			if sku.ID == view.selectedSKUID {
+				skuCode = sku.Code
+				break
+			}
+		}
+		sb.WriteString("  " + s.t(view, "purchase.sku") + ": " + orDefault(skuCode, s.t(view, "purchase.not_selected")) + "\n")
 	}
+	sb.WriteString("  " + s.t(view, "purchase.quantity") + ": " + fmt.Sprintf("%d", view.quantity) + "\n")
+
 	if product.PickEnabled {
-		sb.WriteString(s.t(view, "purchase.pick_enabled") + "\n")
-		if view.pickBin != "" {
-			sb.WriteString(s.t(view, "purchase.pick_bin") + " " + view.pickBin + "\n")
+		sb.WriteString("  " + s.t(view, "purchase.pick_mode") + ": " + pickModeLabel(view, s) + "\n")
+		switch view.pickMode {
+		case contract.PickModeBin:
+			sb.WriteString("  " + s.t(view, "purchase.pick_bin") + ": " + orDefault(view.pickBin, s.t(view, "purchase.not_selected")))
+			if view.pickBin != "" && s.ports.Catalog != nil {
+				if count, err := s.ports.Catalog.CountAvailableByBinPrefix(ctx, product.ID, view.pickBin); err == nil {
+					sb.WriteString("  " + fmt.Sprintf("(" + s.t(view, "purchase.available") + " %d)", count))
+				}
+			}
+			sb.WriteString("\n")
+		case contract.PickModeRandom, contract.PickModeType:
+			sb.WriteString("  " + s.t(view, "purchase.country") + ": " + orDefault(view.pickCountry, s.t(view, "purchase.not_selected")))
+			if view.pickCountry != "" {
+				sb.WriteString("  " + fmt.Sprintf("(" + s.t(view, "purchase.available") + " %d)", s.countryStock(view)))
+			}
+			sb.WriteString("\n")
+		}
+		if view.pickMode == contract.PickModeType {
+			sb.WriteString("  " + s.t(view, "purchase.brand") + ": " + orDefault(view.pickBrand, s.t(view, "purchase.not_selected")) + "\n")
+			sb.WriteString("  " + s.t(view, "purchase.card_type") + ": " + orDefault(view.pickCardType, s.t(view, "purchase.not_selected")) + "\n")
 		}
 	}
+
+	if product.CardCheckEnabled {
+		cc := "❌ " + s.t(view, "purchase.cc_off")
+		if view.cardCheck {
+			cc = "✅ " + s.t(view, "purchase.cc_on")
+		}
+		sb.WriteString("  " + s.t(view, "purchase.card_check") + ": " + cc + "\n")
+	}
+
+	// 两档价格（含挑卡加价）
+	if product.CardCheckEnabled {
+		surcharge := s.pickUnitSurcharge(view)
+		plain := product.PriceAmount
+		if !surcharge.IsZero() {
+			plain = addAmounts(plain, surcharge.String())
+		}
+		checked := addAmounts(plain, product.CardCheckFee)
+		sb.WriteString("\n" + s.t(view, "purchase.plain_price") + " " + formatAmount(plain, product.Currency) + "\n")
+		sb.WriteString(s.t(view, "purchase.checked_price") + " " + formatAmount(checked, product.Currency) + "\n")
+	}
+
 	sb.WriteString("\n" + s.t(view, "purchase.detail_hint"))
 
 	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
 		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.detailKeyboard(view)})
 }
 
+// pickModeLabel 挑卡模式显示名。
+func pickModeLabel(view *purchaseView, s *purchaseService) string {
+	switch view.pickMode {
+	case contract.PickModeBin:
+		return s.t(view, "purchase.pick_mode_bin")
+	case contract.PickModeRandom:
+		return s.t(view, "purchase.pick_mode_random")
+	case contract.PickModeType:
+		return s.t(view, "purchase.pick_mode_type")
+	}
+	return s.t(view, "purchase.not_selected")
+}
+
+// pickUnitSurcharge 计算挑卡加价。
+func (s *purchaseService) pickUnitSurcharge(view *purchaseView) decimal.Decimal {
+	if view == nil || view.selected == nil || !view.selected.PickEnabled {
+		return decimal.Zero
+	}
+	prices := view.selected.PickPrices
+	switch view.pickMode {
+	case contract.PickModeBin:
+		if v, ok := prices["bin"]; ok {
+			if d, err := decimal.NewFromString(strings.TrimSpace(v)); err == nil {
+				return d.Round(2)
+			}
+		}
+	case contract.PickModeRandom, contract.PickModeType:
+		maxByGroup := func(key string) decimal.Decimal {
+			if v, ok := prices[key]; ok {
+				if d, err := decimal.NewFromString(strings.TrimSpace(v)); err == nil {
+					return d.Round(2)
+				}
+			}
+			return decimal.Zero
+		}
+		var brandFee decimal.Decimal
+		if view.pickMode == contract.PickModeType {
+			brandFee = maxByGroup(view.pickBrand)
+		}
+		cardFee := maxByGroup(view.pickCardType)
+		return brandFee.Add(cardFee).Round(2)
+	}
+	return decimal.Zero
+}
+
+// countryStock 计算所选国家在当前筛选下的可用库存。
+func (s *purchaseService) countryStock(view *purchaseView) int64 {
+	if view == nil || view.pickStock == nil || view.pickCountry == "" {
+		return 0
+	}
+	for _, c := range view.pickStock.Countries {
+		if c.Code == view.pickCountry {
+			return c.Stock
+		}
+	}
+	return 0
+}
+
+// selectSKU 选择 SKU 并回到配置面板。
 func (s *purchaseService) selectSKU(ctx context.Context, token string, chatID int64, skuIDStr string) error {
 	id, err := strconv.ParseUint(skuIDStr, 10, 64)
 	if err != nil {
@@ -367,15 +531,6 @@ func (s *purchaseService) selectSKU(ctx context.Context, token string, chatID in
 	s.mu.Lock()
 	if sess := s.sessions[chatID]; sess != nil {
 		sess.selectedSKUID = uint(id)
-	}
-	s.mu.Unlock()
-	return s.renderDetail(ctx, token, chatID)
-}
-
-func (s *purchaseService) toggleCardCheck(ctx context.Context, token string, chatID int64, on bool) error {
-	s.mu.Lock()
-	if sess := s.sessions[chatID]; sess != nil {
-		sess.cardCheck = on
 	}
 	s.mu.Unlock()
 	return s.renderDetail(ctx, token, chatID)
@@ -394,37 +549,254 @@ func (s *purchaseService) setQuantity(ctx context.Context, token string, chatID 
 	return s.renderDetail(ctx, token, chatID)
 }
 
-// handleDetailText 处理商品详情阶段的文本输入（BIN 挑头）。
-func (s *purchaseService) handleDetailText(ctx context.Context, token string, view *purchaseView, text string) error {
-	if view.selected != nil && view.selected.PickEnabled && isBinInput(text) {
+func (s *purchaseService) toggleCardCheck(ctx context.Context, token string, chatID int64, on bool) error {
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.cardCheck = on
+	}
+	s.mu.Unlock()
+	return s.renderDetail(ctx, token, chatID)
+}
+
+// --- 挑卡分步 ---
+
+// renderPickMode 渲染挑卡模式选择（随机/BIN/种类）。
+func (s *purchaseService) renderPickMode(ctx context.Context, token string, chatID int64) error {
+	view := s.snapshot(chatID)
+	if view == nil || view.selected == nil {
+		return nil
+	}
+	var sb strings.Builder
+	sb.WriteString(s.t(view, "purchase.pick_mode_title") + "\n\n")
+	sb.WriteString(s.t(view, "purchase.pick_mode_desc"))
+
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.step = purchaseStepPickMode
+	}
+	s.mu.Unlock()
+
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.pickModeKeyboard(view)})
+}
+
+func (s *purchaseService) selectPickMode(ctx context.Context, token string, chatID int64, mode string) error {
+	var pm contract.PickMode
+	switch mode {
+	case "random":
+		pm = contract.PickModeRandom
+	case "bin":
+		pm = contract.PickModeBin
+	case "type":
+		pm = contract.PickModeType
+	default:
+		return s.sendError(ctx, token, chatID, nil, "purchase.error")
+	}
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.pickMode = pm
+		// 切换模式时清空对应选择
+		sess.pickCountry = ""
+		sess.pickBrand = ""
+		sess.pickCardType = ""
+		sess.pickBin = ""
+	}
+	s.mu.Unlock()
+
+	switch pm {
+	case contract.PickModeBin:
+		// BIN 模式：进入输入状态（无需国家）
+		s.mu.Lock()
+		if sess := s.sessions[chatID]; sess != nil {
+			sess.step = purchaseStepPickBin
+		}
+		s.mu.Unlock()
+		return s.sendConfigurePrompt(ctx, token, chatID, "purchase.bin_prompt")
+	case contract.PickModeRandom, contract.PickModeType:
+		// 需要选国家
+		return s.renderPickCountry(ctx, token, chatID)
+	}
+	return s.renderDetail(ctx, token, chatID)
+}
+
+// renderPickCountry 渲染国家选择（按库存降序）。
+func (s *purchaseService) renderPickCountry(ctx context.Context, token string, chatID int64) error {
+	view := s.snapshot(chatID)
+	if view == nil || view.selected == nil {
+		return nil
+	}
+	var sb strings.Builder
+	sb.WriteString(s.t(view, "purchase.country_title") + "\n\n")
+	sb.WriteString(s.t(view, "purchase.country_desc"))
+
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.step = purchaseStepPickCountry
+	}
+	s.mu.Unlock()
+
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.countryKeyboard(view)})
+}
+
+func (s *purchaseService) selectCountry(ctx context.Context, token string, chatID int64, code string) error {
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.pickCountry = code
+		sess.pickBrand = ""
+		sess.pickCardType = ""
+	}
+	s.mu.Unlock()
+	// 选了国家后：random 直接回配置面板；type 继续选品牌
+	view := s.snapshot(chatID)
+	if view != nil && view.pickMode == contract.PickModeType {
+		return s.renderPickBrand(ctx, token, chatID)
+	}
+	return s.renderDetail(ctx, token, chatID)
+}
+
+// renderPickBrand 渲染品牌选择（type 模式）。
+func (s *purchaseService) renderPickBrand(ctx context.Context, token string, chatID int64) error {
+	view := s.snapshot(chatID)
+	if view == nil || view.selected == nil {
+		return nil
+	}
+	var sb strings.Builder
+	sb.WriteString(s.t(view, "purchase.brand_title") + "\n\n")
+	sb.WriteString(s.t(view, "purchase.brand_desc"))
+
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.step = purchaseStepPickBrand
+	}
+	s.mu.Unlock()
+
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.brandKeyboard(view)})
+}
+
+func (s *purchaseService) selectBrand(ctx context.Context, token string, chatID int64, brand string) error {
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.pickBrand = brand
+		sess.pickCardType = ""
+	}
+	s.mu.Unlock()
+	return s.renderPickCardType(ctx, token, chatID)
+}
+
+// renderPickCardType 渲染卡类型选择（type 模式）。
+func (s *purchaseService) renderPickCardType(ctx context.Context, token string, chatID int64) error {
+	view := s.snapshot(chatID)
+	if view == nil || view.selected == nil {
+		return nil
+	}
+	var sb strings.Builder
+	sb.WriteString(s.t(view, "purchase.card_type_title") + "\n\n")
+	sb.WriteString(s.t(view, "purchase.card_type_desc"))
+
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.step = purchaseStepPickCardType
+	}
+	s.mu.Unlock()
+
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.cardTypeKeyboard(view)})
+}
+
+func (s *purchaseService) selectCardType(ctx context.Context, token string, chatID int64, cardType string) error {
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.pickCardType = cardType
+	}
+	s.mu.Unlock()
+	return s.renderDetail(ctx, token, chatID)
+}
+
+// sendConfigurePrompt 发送提示并等待文本输入（BIN）。
+func (s *purchaseService) sendConfigurePrompt(ctx context.Context, token string, chatID int64, key string) error {
+	view := s.snapshot(chatID)
+	loc := "zh-CN"
+	if view != nil {
+		loc = view.locale
+	}
+	_ = s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), localizedText(purchaseTexts[key], loc),
+		contract.SendMessageOptions{DisableWebPagePreview: true})
+	return nil
+}
+
+// handleConfigureText 处理配置面板的文本输入：BIN 或国家双字母。
+func (s *purchaseService) handleConfigureText(ctx context.Context, token string, view *purchaseView, text string) error {
+	if view == nil || view.selected == nil {
+		return nil
+	}
+
+	// BIN 输入：仅当处于挑头模式（输入 6 位）时处理。
+	if isBinInput(text) && (view.pickMode == contract.PickModeBin || view.step == purchaseStepPickBin) {
+		count, err := s.ports.Catalog.CountAvailableByBinPrefix(ctx, view.selected.ID, text)
+		if err == nil && count == 0 {
+			return s.sendError(ctx, token, view.chatID, nil, "purchase.bin_none")
+		}
 		s.mu.Lock()
 		if sess := s.sessions[view.chatID]; sess != nil {
 			sess.pickBin = text
+			sess.step = purchaseStepConfigure
 		}
 		s.mu.Unlock()
-		if s.ports.Catalog != nil && view.selected != nil {
-			count, err := s.ports.Catalog.CountAvailableByBinPrefix(ctx, view.selected.ID, text)
-			if err == nil {
-				msg := fmt.Sprintf(s.t(view, "purchase.bin_set"), text)
-				if count > 0 {
-					msg += "\n" + fmt.Sprintf(s.t(view, "purchase.bin_available"), count)
-				} else {
-					msg += "\n" + s.t(view, "purchase.bin_none")
-				}
-				_ = s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", view.chatID), msg,
-					contract.SendMessageOptions{DisableWebPagePreview: true})
-			}
+		msg := fmt.Sprintf(s.t(view, "purchase.bin_set"), text)
+		if err == nil {
+			msg += "\n" + fmt.Sprintf(s.t(view, "purchase.bin_available"), count)
 		}
+		_ = s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", view.chatID), msg,
+			contract.SendMessageOptions{DisableWebPagePreview: true})
 		return s.renderDetail(ctx, token, view.chatID)
 	}
+
+	// 国家双字母输入：仅当模式需要国家（random/type）时处理。
+	code := strings.ToUpper(text)
+	if isCountryCode(code) && (view.pickMode == contract.PickModeRandom || view.pickMode == contract.PickModeType) {
+		// 校验该国家在可选项中
+		if s.countryAvailable(view, code) {
+			s.mu.Lock()
+			if sess := s.sessions[view.chatID]; sess != nil {
+				sess.pickCountry = code
+			}
+			s.mu.Unlock()
+			if view.pickMode == contract.PickModeType {
+				return s.renderPickBrand(ctx, token, view.chatID)
+			}
+			return s.renderDetail(ctx, token, view.chatID)
+		}
+		return s.sendError(ctx, token, view.chatID, nil, "purchase.country_invalid")
+	}
+
 	return s.sendHelp(ctx, token, view.chatID)
 }
+
+// countryAvailable 判断国家是否在可选项内。
+func (s *purchaseService) countryAvailable(view *purchaseView, code string) bool {
+	if view == nil || view.pickStock == nil {
+		return false
+	}
+	for _, c := range view.pickStock.Countries {
+		if c.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+// --- 下单与支付 ---
 
 // confirmOrder 预下单并展示金额，等待确认。
 func (s *purchaseService) confirmOrder(ctx context.Context, token string, chatID int64) error {
 	view := s.snapshot(chatID)
 	if view == nil || view.selected == nil || view.userID == 0 {
 		return nil
+	}
+	if err := s.validateOrder(view); err != nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.incomplete")
 	}
 
 	preview, err := s.ports.Orders.Preview(ctx, contract.PurchasePreviewInput{
@@ -445,6 +817,16 @@ func (s *purchaseService) confirmOrder(ctx context.Context, token string, chatID
 		if it.PickBin != "" {
 			sb.WriteString(" [" + s.t(view, "purchase.pick_bin") + " " + it.PickBin + "]")
 		}
+		if it.PickCountry != "" {
+			sb.WriteString(" [" + it.PickCountry)
+			if len(it.PickBrands) > 0 {
+				sb.WriteString(" " + strings.Join(it.PickBrands, "/"))
+			}
+			if len(it.PickCardTypes) > 0 {
+				sb.WriteString(" " + strings.Join(it.PickCardTypes, "/"))
+			}
+			sb.WriteString("]")
+		}
 		sb.WriteString(fmt.Sprintf(" ×%d\n", it.Quantity))
 		sb.WriteString("  " + formatAmount(it.UnitPrice, preview.Currency) + " = " + formatAmount(it.TotalPrice, preview.Currency) + "\n")
 	}
@@ -458,19 +840,69 @@ func (s *purchaseService) confirmOrder(ctx context.Context, token string, chatID
 		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.confirmKeyboard(view)})
 }
 
+// validateOrder 下单前校验选择的完整性。
+func (s *purchaseService) validateOrder(view *purchaseView) error {
+	if view == nil || view.selected == nil {
+		return fmt.Errorf("no product selected")
+	}
+	if len(view.selected.SKUs) > 0 && view.selectedSKUID == 0 {
+		return fmt.Errorf("SKU not selected")
+	}
+	if view.selected.PickEnabled {
+		switch view.pickMode {
+		case contract.PickModeBin:
+			if !isBinInput(view.pickBin) {
+				return fmt.Errorf("BIN not set")
+			}
+		case contract.PickModeRandom:
+			if view.pickCountry == "" {
+				return fmt.Errorf("country not selected")
+			}
+		case contract.PickModeType:
+			if view.pickCountry == "" {
+				return fmt.Errorf("country not selected")
+			}
+			if view.pickBrand == "" {
+				return fmt.Errorf("brand not selected")
+			}
+			if view.pickCardType == "" {
+				return fmt.Errorf("card type not selected")
+			}
+		default:
+			return fmt.Errorf("pick mode not selected")
+		}
+	}
+	return nil
+}
+
 // buildPurchaseItems 从快照生成订单项。
 func buildPurchaseItems(view *purchaseView) []contract.PurchaseItem {
 	if view == nil || view.selected == nil {
 		return nil
 	}
-	return []contract.PurchaseItem{{
+	item := contract.PurchaseItem{
 		ProductID:        view.selected.ID,
 		SKUID:            view.selectedSKUID,
 		Quantity:         view.quantity,
 		FulfillmentType:  view.selected.FulfillmentType,
 		CardCheckEnabled: view.cardCheck,
-		PickBin:          view.pickBin,
-	}}
+	}
+	// 按挑卡模式裁剪字段，避免残留的 BIN/国家/品牌污染后端下单参数。
+	switch view.pickMode {
+	case contract.PickModeBin:
+		item.PickBin = view.pickBin
+	case contract.PickModeRandom:
+		item.PickCountry = view.pickCountry
+	case contract.PickModeType:
+		item.PickCountry = view.pickCountry
+		if view.pickBrand != "" && view.pickBrand != "random" {
+			item.PickBrands = []string{view.pickBrand}
+		}
+		if view.pickCardType != "" && view.pickCardType != "random" {
+			item.PickCardTypes = []string{view.pickCardType}
+		}
+	}
+	return []contract.PurchaseItem{item}
 }
 
 // createOrder 实际下单。
@@ -478,6 +910,9 @@ func (s *purchaseService) createOrder(ctx context.Context, token string, chatID 
 	view := s.snapshot(chatID)
 	if view == nil || view.selected == nil || view.userID == 0 {
 		return nil, fmt.Errorf("no active purchase session")
+	}
+	if err := s.validateOrder(view); err != nil {
+		return nil, err
 	}
 	return s.ports.Orders.Create(ctx, contract.PurchaseCreateInput{
 		UserID: view.userID,
@@ -642,11 +1077,13 @@ func (s *purchaseService) productKeyboard(view *purchaseView, products []contrac
 	return inlineKeyboard{InlineKeyboard: rows}
 }
 
+// detailKeyboard 配置面板键盘（按上下文动态分组）。
 func (s *purchaseService) detailKeyboard(view *purchaseView) inlineKeyboard {
 	product := view.selected
-	rows := make([][]inlineButton, 0, 6)
+	rows := make([][]inlineButton, 0, 8)
 
-	if len(product.SKUs) > 0 {
+	// SKU 选择
+	if len(product.SKUs) > 1 {
 		row := make([]inlineButton, 0, len(product.SKUs))
 		for _, sku := range product.SKUs {
 			row = append(row, inlineButton{
@@ -657,12 +1094,26 @@ func (s *purchaseService) detailKeyboard(view *purchaseView) inlineKeyboard {
 		rows = append(rows, row)
 	}
 
+	// 数量
 	rows = append(rows, []inlineButton{
 		{Text: "−", CallbackData: cbQtyPrefix + fmt.Sprintf("%d", max(1, view.quantity-1))},
 		{Text: fmt.Sprintf("%d", view.quantity), CallbackData: cbHelpBuy},
 		{Text: "+", CallbackData: cbQtyPrefix + fmt.Sprintf("%d", view.quantity+1)},
 	})
 
+	// 挑卡模式
+	if product.PickEnabled {
+		modeLabel := "🎯 " + s.t(view, "purchase.pick_mode")
+		if view.pickMode != "" {
+			modeLabel += "：" + pickModeLabel(view, s)
+		}
+		rows = append(rows, []inlineButton{{
+			Text:         modeLabel,
+			CallbackData: cbBackPick,
+		}})
+	}
+
+	// 测活
 	if product.CardCheckEnabled {
 		ccLabel := "❌ " + s.t(view, "purchase.cc_off")
 		if view.cardCheck {
@@ -674,12 +1125,118 @@ func (s *purchaseService) detailKeyboard(view *purchaseView) inlineKeyboard {
 		}})
 	}
 
+	// 立即购买
 	rows = append(rows, []inlineButton{{
 		Text:         "🛒 " + s.t(view, "purchase.buy_now"),
 		CallbackData: cbConfirm,
 	}})
 	rows = append(rows, []inlineButton{
 		{Text: "🔙 " + s.t(view, "purchase.back"), CallbackData: cbBackProd},
+		{Text: "❌ " + s.t(view, "purchase.cancel"), CallbackData: cbCancel},
+	})
+	return inlineKeyboard{InlineKeyboard: rows}
+}
+
+// pickModeKeyboard 挑卡模式选择键盘。
+func (s *purchaseService) pickModeKeyboard(view *purchaseView) inlineKeyboard {
+	rows := [][]inlineButton{
+		{
+			{Text: "🎲 " + s.t(view, "purchase.pick_mode_random"), CallbackData: cbPickModePrefix + "random"},
+		},
+		{
+			{Text: "🔢 " + s.t(view, "purchase.pick_mode_bin"), CallbackData: cbPickModePrefix + "bin"},
+		},
+		{
+			{Text: "🎴 " + s.t(view, "purchase.pick_mode_type"), CallbackData: cbPickModePrefix + "type"},
+		},
+		{
+			{Text: "🔙 " + s.t(view, "purchase.back"), CallbackData: cbBackDetail},
+			{Text: "❌ " + s.t(view, "purchase.cancel"), CallbackData: cbCancel},
+		},
+	}
+	return inlineKeyboard{InlineKeyboard: rows}
+}
+
+// countryKeyboard 国家选择键盘（按库存降序，每行 2 个）。
+func (s *purchaseService) countryKeyboard(view *purchaseView) inlineKeyboard {
+	rows := make([][]inlineButton, 0)
+	if view.pickStock == nil {
+		return inlineKeyboard{InlineKeyboard: rows}
+	}
+	row := make([]inlineButton, 0, 2)
+	for _, c := range view.pickStock.Countries {
+		label := c.Code + " " + c.Name
+		if c.Stock > 0 {
+			label += fmt.Sprintf("(%d)", c.Stock)
+		}
+		row = append(row, inlineButton{
+			Text:         label,
+			CallbackData: cbCountryPrefix + c.Code,
+		})
+		if len(row) == 2 {
+			rows = append(rows, row)
+			row = make([]inlineButton, 0, 2)
+		}
+	}
+	if len(row) > 0 {
+		rows = append(rows, row)
+	}
+	rows = append(rows, []inlineButton{
+		{Text: "🔙 " + s.t(view, "purchase.back"), CallbackData: cbBackPick},
+		{Text: "❌ " + s.t(view, "purchase.cancel"), CallbackData: cbCancel},
+	})
+	return inlineKeyboard{InlineKeyboard: rows}
+}
+
+// brandKeyboard 品牌选择键盘。
+func (s *purchaseService) brandKeyboard(view *purchaseView) inlineKeyboard {
+	rows := make([][]inlineButton, 0)
+	if view.pickStock == nil {
+		return inlineKeyboard{InlineKeyboard: rows}
+	}
+	row := make([]inlineButton, 0, 2)
+	for _, b := range view.pickStock.Brands {
+		row = append(row, inlineButton{
+			Text:         b.Name,
+			CallbackData: cbBrandPrefix + b.Key,
+		})
+		if len(row) == 2 {
+			rows = append(rows, row)
+			row = make([]inlineButton, 0, 2)
+		}
+	}
+	if len(row) > 0 {
+		rows = append(rows, row)
+	}
+	rows = append(rows, []inlineButton{
+		{Text: "🔙 " + s.t(view, "purchase.back"), CallbackData: cbBackCountry},
+		{Text: "❌ " + s.t(view, "purchase.cancel"), CallbackData: cbCancel},
+	})
+	return inlineKeyboard{InlineKeyboard: rows}
+}
+
+// cardTypeKeyboard 卡类型选择键盘。
+func (s *purchaseService) cardTypeKeyboard(view *purchaseView) inlineKeyboard {
+	rows := make([][]inlineButton, 0)
+	if view.pickStock == nil {
+		return inlineKeyboard{InlineKeyboard: rows}
+	}
+	row := make([]inlineButton, 0, 2)
+	for _, t := range view.pickStock.CardTypes {
+		row = append(row, inlineButton{
+			Text:         t.Name,
+			CallbackData: cbCTypePrefix + t.Key,
+		})
+		if len(row) == 2 {
+			rows = append(rows, row)
+			row = make([]inlineButton, 0, 2)
+		}
+	}
+	if len(row) > 0 {
+		rows = append(rows, row)
+	}
+	rows = append(rows, []inlineButton{
+		{Text: "🔙 " + s.t(view, "purchase.back"), CallbackData: cbBackCountry},
 		{Text: "❌ " + s.t(view, "purchase.cancel"), CallbackData: cbCancel},
 	})
 	return inlineKeyboard{InlineKeyboard: rows}
@@ -731,6 +1288,18 @@ func isBinInput(text string) bool {
 	return true
 }
 
+func isCountryCode(text string) bool {
+	if len(text) != 2 {
+		return false
+	}
+	for _, r := range text {
+		if (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') {
+			return false
+		}
+	}
+	return true
+}
+
 func boolStr(b bool) string {
 	if b {
 		return "1"
@@ -744,6 +1313,22 @@ func formatAmount(amount, currency string) string {
 		return amount + " " + strings.TrimSpace(currency)
 	}
 	return dec.Round(2).StringFixed(2) + " " + strings.TrimSpace(currency)
+}
+
+func addAmounts(a, b string) string {
+	da, err1 := decimal.NewFromString(strings.TrimSpace(a))
+	db, err2 := decimal.NewFromString(strings.TrimSpace(b))
+	if err1 != nil || err2 != nil {
+		return a
+	}
+	return da.Add(db).Round(2).StringFixed(2)
+}
+
+func orDefault(v, def string) string {
+	if strings.TrimSpace(v) == "" {
+		return def
+	}
+	return v
 }
 
 func max(a, b int) int {
@@ -764,6 +1349,7 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.card_check":      {"zh-CN": "测活", "zh-TW": "測活", "en-US": "Card check"},
 	"purchase.pick_enabled":    {"zh-CN": "支持挑卡", "zh-TW": "支持挑卡", "en-US": "Pick enabled"},
 	"purchase.pick_bin":        {"zh-CN": "挑头", "zh-TW": "挑頭", "en-US": "BIN"},
+	"purchase.pick_mode":       {"zh-CN": "挑卡", "zh-TW": "挑卡", "en-US": "Pick"},
 	"purchase.buy_now":         {"zh-CN": "立即购买", "zh-TW": "立即購買", "en-US": "Buy Now"},
 	"purchase.back":            {"zh-CN": "返回", "zh-TW": "返回", "en-US": "Back"},
 	"purchase.cancel":          {"zh-CN": "取消", "zh-TW": "取消", "en-US": "Cancel"},
@@ -780,11 +1366,35 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.wallet_paid":     {"zh-CN": "余额支付", "zh-TW": "餘額支付", "en-US": "Balance paid"},
 	"purchase.online_pay":      {"zh-CN": "在线支付", "zh-TW": "線上支付", "en-US": "Online paid"},
 	"purchase.pay_help":        {"zh-CN": "可在网页商城个人中心查看订单与发货详情。", "zh-TW": "可在網頁商城個人中心查看訂單與發貨詳情。", "en-US": "View order and delivery in the web shop account."},
-	"purchase.help":            {"zh-CN": "输入 6 位 BIN（挑头）后点击立即购买，或输入 /shop 重新开始。", "zh-TW": "輸入 6 位 BIN（挑頭）後點擊立即購買，或輸入 /shop 重新開始。", "en-US": "Enter a 6-digit BIN to pick by BIN, then tap Buy Now. Type /shop to restart."},
+	"purchase.help":            {"zh-CN": "在商品配置面板依次选择 SKU、数量、挑卡与测活后点击立即购买；挑头可直接输入 6 位 BIN，选国家可直接回复双字母代码。输入 /shop 重新开始。", "zh-TW": "在商品配置面板依次選擇 SKU、數量、挑卡與測活後點擊立即購買；挑頭可直接輸入 6 位 BIN，選國家可直接回覆雙字母代碼。輸入 /shop 重新開始。", "en-US": "In the product panel choose SKU, quantity, pick and card check in order, then Buy Now. Enter a 6-digit BIN for pick-by-BIN, or reply a 2-letter country code to pick a country. Type /shop to restart."},
 	"purchase.error":           {"zh-CN": "操作失败。", "zh-TW": "操作失敗。", "en-US": "Operation failed."},
 	"purchase.canceled":        {"zh-CN": "已取消购买。", "zh-TW": "已取消購買。", "en-US": "Purchase canceled."},
 	"purchase.bin_set":         {"zh-CN": "已设置挑头 BIN：%s", "zh-TW": "已設定挑頭 BIN：%s", "en-US": "Pick BIN set: %s"},
 	"purchase.bin_available":   {"zh-CN": "可用库存：%d", "zh-TW": "可用庫存：%d", "en-US": "Available: %d"},
-	"purchase.bin_none":        {"zh-CN": "该 BIN 暂无可用库存。", "zh-TW": "該 BIN 暫無可用庫存。", "en-US": "No stock for this BIN."},
-	"purchase.detail_hint":     {"zh-CN": "选择数量与测活后点击立即购买；支持挑头时可直接输入 6 位 BIN。", "zh-TW": "選擇數量與測活後點擊立即購買；支援挑頭時可直接輸入 6 位 BIN。", "en-US": "Choose quantity and card check, then Buy Now. If pick is enabled, enter a 6-digit BIN."},
+	"purchase.bin_none":        {"zh-CN": "该 BIN 暂无可用库存，请换一个。", "zh-TW": "該 BIN 暫無可用庫存，請換一個。", "en-US": "No stock for this BIN, try another."},
+	"purchase.bin_prompt":      {"zh-CN": "请直接输入 6 位 BIN（挑头）。", "zh-TW": "請直接輸入 6 位 BIN（挑頭）。", "en-US": "Please enter the 6-digit BIN."},
+	"purchase.detail_hint":     {"zh-CN": "依次选择数量、挑卡与测活，然后立即购买。", "zh-TW": "依次選擇數量、挑卡與測活，然後立即購買。", "en-US": "Choose quantity, pick and card check, then Buy Now."},
+	"purchase.current":         {"zh-CN": "当前选择", "zh-TW": "目前選擇", "en-US": "Current"},
+	"purchase.sku":             {"zh-CN": "规格", "zh-TW": "規格", "en-US": "SKU"},
+	"purchase.quantity":        {"zh-CN": "数量", "zh-TW": "數量", "en-US": "Qty"},
+	"purchase.not_selected":    {"zh-CN": "未选择", "zh-TW": "未選擇", "en-US": "not selected"},
+	"purchase.country":         {"zh-CN": "国家", "zh-TW": "國家", "en-US": "Country"},
+	"purchase.brand":           {"zh-CN": "品牌", "zh-TW": "品牌", "en-US": "Brand"},
+	"purchase.card_type":       {"zh-CN": "卡类型", "zh-TW": "卡類型", "en-US": "Card type"},
+	"purchase.available":       {"zh-CN": "可发", "zh-TW": "可發", "en-US": "stock"},
+	"purchase.plain_price":     {"zh-CN": "不测活价", "zh-TW": "不測活價", "en-US": "Plain"},
+	"purchase.checked_price":   {"zh-CN": "测活价", "zh-TW": "測活價", "en-US": "Checked"},
+	"purchase.pick_mode_random": {"zh-CN": "随机", "zh-TW": "隨機", "en-US": "Random"},
+	"purchase.pick_mode_bin":    {"zh-CN": "挑头(BIN)", "zh-TW": "挑頭(BIN)", "en-US": "By BIN"},
+	"purchase.pick_mode_type":   {"zh-CN": "挑卡种类", "zh-TW": "挑卡種類", "en-US": "By type"},
+	"purchase.pick_mode_title":  {"zh-CN": "选择挑卡方式", "zh-TW": "選擇挑卡方式", "en-US": "Choose pick mode"},
+	"purchase.pick_mode_desc":   {"zh-CN": "随机：只选国家；挑头：输入 BIN；挑卡种类：选国家+品牌+卡类型。", "zh-TW": "隨機：只選國家；挑頭：輸入 BIN；挑卡種類：選國家+品牌+卡類型。", "en-US": "Random: country only. By BIN: enter a BIN. By type: country + brand + card type."},
+	"purchase.country_title":    {"zh-CN": "选择国家", "zh-TW": "選擇國家", "en-US": "Select country"},
+	"purchase.country_desc":     {"zh-CN": "点击下方国家，或直接回复双字母代码（如 US）。", "zh-TW": "點擊下方國家，或直接回覆雙字母代碼（如 US）。", "en-US": "Tap a country below or reply a 2-letter code (e.g. US)."},
+	"purchase.brand_title":      {"zh-CN": "选择品牌", "zh-TW": "選擇品牌", "en-US": "Select brand"},
+	"purchase.brand_desc":       {"zh-CN": "选择品牌：", "zh-TW": "選擇品牌：", "en-US": "Select a brand:"},
+	"purchase.card_type_title":  {"zh-CN": "选择卡类型", "zh-TW": "選擇卡類型", "en-US": "Select card type"},
+	"purchase.card_type_desc":   {"zh-CN": "选择卡类型：", "zh-TW": "選擇卡類型：", "en-US": "Select a card type:"},
+	"purchase.incomplete":       {"zh-CN": "请先完成全部必选配置（挑卡模式/国家/品牌/卡类型/BIN）。", "zh-TW": "請先完成全部必選配置（挑卡模式/國家/品牌/卡類型/BIN）。", "en-US": "Please complete all required selections first."},
+	"purchase.country_invalid":  {"zh-CN": "该国家代码不在可选范围内，请重试。", "zh-TW": "該國家代碼不在可選範圍內，請重試。", "en-US": "Country code not available, try again."},
 }

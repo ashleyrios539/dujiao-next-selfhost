@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	categoryapp "github.com/dujiao-next/internal/modules/catalog/category/application"
@@ -14,6 +15,7 @@ import (
 	settingsapp "github.com/dujiao-next/internal/modules/settings/application"
 	"github.com/dujiao-next/internal/modules/telegram/webhook/contract"
 	walletapp "github.com/dujiao-next/internal/modules/wallet/application"
+	"github.com/dujiao-next/internal/shared/countries"
 )
 
 // telegramPurchasePorts 把业务模块具体服务适配为 bot 内购买所需的窄端口。
@@ -129,6 +131,51 @@ func (p *telegramPurchasePorts) CountAvailableByBinPrefix(_ context.Context, pro
 		return 0, nil
 	}
 	return p.products.CountAvailableByBinPrefix(productID, bin)
+}
+
+// GetPickStock 聚合挑卡可选维度：国家按可用库存降序，品牌/卡类型为固定选项。
+func (p *telegramPurchasePorts) GetPickStock(ctx context.Context, productID uint) (*contract.ShopPickStock, error) {
+	attrs, err := p.CountPickAttrs(ctx, productID)
+	if err != nil {
+		return nil, err
+	}
+	stock := &contract.ShopPickStock{
+		Brands: []contract.ShopPickBrand{
+			{Key: "random", Name: "随机"},
+			{Key: "visa", Name: "Visa"},
+			{Key: "mastercard", Name: "Mastercard"},
+			{Key: "discover", Name: "Discover"},
+			{Key: "amex", Name: "AMEX"},
+			{Key: "jcb", Name: "JCB"},
+		},
+		CardTypes: []contract.ShopPickCardType{
+			{Key: "random", Name: "随机"},
+			{Key: "D", Name: "D"},
+			{Key: "PD", Name: "PD"},
+			{Key: "C", Name: "C"},
+		},
+	}
+
+	// 按国家聚合库存（全部 SKU 求和），降序排序。
+	countryStock := map[string]int64{}
+	for _, a := range attrs {
+		if a.Country == "" {
+			continue
+		}
+		countryStock[a.Country] += a.Total
+	}
+	for code, total := range countryStock {
+		stock.Countries = append(stock.Countries, contract.ShopPickCountry{
+			Code:  code,
+			Name:  countries.ChineseName(code),
+			Stock: total,
+		})
+	}
+	// 降序排列
+	sort.Slice(stock.Countries, func(i, j int) bool {
+		return stock.Countries[i].Stock > stock.Countries[j].Stock
+	})
+	return stock, nil
 }
 
 func (p *telegramPurchasePorts) toShopProduct(product *productdomain.Product) contract.ShopProduct {

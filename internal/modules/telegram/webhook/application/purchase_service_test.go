@@ -16,6 +16,7 @@ type stubCatalog struct {
 	bySlug     map[string]*contract.ShopProduct
 	binCount   map[uint]int64
 	binCountBy map[string]int64
+	pickStock  *contract.ShopPickStock
 }
 
 func (c *stubCatalog) ListActiveCategories(context.Context) ([]contract.ShopCategory, error) {
@@ -40,6 +41,12 @@ func (c *stubCatalog) CountAvailableByBinPrefix(_ context.Context, productID uin
 		return c.binCount[productID], nil
 	}
 	return 0, nil
+}
+func (c *stubCatalog) GetPickStock(context.Context, uint) (*contract.ShopPickStock, error) {
+	if c.pickStock != nil {
+		return c.pickStock, nil
+	}
+	return &contract.ShopPickStock{}, nil
 }
 
 type stubOrders struct {
@@ -185,21 +192,33 @@ func TestPurchaseServicePickBinAndOrder(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("prod err: %v", err)
 	}
+	// 进入挑卡模式选择（配置面板的"挑卡"按钮 → cbBackPick）
+	if _, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		CallbackQuery: &webhookdomain.CallbackQuery{ID: "c3", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbBackPick},
+	}); err != nil {
+		t.Fatalf("pick err: %v", err)
+	}
+	// 选挑头(BIN)模式
+	if _, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		CallbackQuery: &webhookdomain.CallbackQuery{ID: "c4", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbPickModePrefix + "bin"},
+	}); err != nil {
+		t.Fatalf("pickmode err: %v", err)
+	}
 	// 输入 BIN
 	if _, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
-		Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}, Text: "412345"},
+		Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, Text: "412345"},
 	}); err != nil {
 		t.Fatalf("bin err: %v", err)
 	}
 	// 确认下单
 	if _, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
-		CallbackQuery: &webhookdomain.CallbackQuery{ID: "c3", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbConfirm},
+		CallbackQuery: &webhookdomain.CallbackQuery{ID: "c5", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbConfirm},
 	}); err != nil {
 		t.Fatalf("confirm err: %v", err)
 	}
 	// 选择余额支付
 	if _, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
-		CallbackQuery: &webhookdomain.CallbackQuery{ID: "c4", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbPayBalance},
+		CallbackQuery: &webhookdomain.CallbackQuery{ID: "c6", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbPayBalance},
 	}); err != nil {
 		t.Fatalf("pay err: %v", err)
 	}
@@ -228,6 +247,102 @@ func keyboardContains(kb inlineKeyboard, text string) bool {
 		}
 	}
 	return false
+}
+
+func TestPurchaseServiceTypeModeWithCountryReply(t *testing.T) {
+	product := &contract.ShopProduct{
+		ID: 10, Slug: "dx", Title: "迪士尼卡", Currency: "CNY",
+		PriceAmount: "50.00", FulfillmentType: "auto",
+		PickEnabled: true, PickPrices: map[string]string{"visa": "3.00", "D": "2.00"},
+	}
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog: &stubCatalog{
+			cats:     []contract.ShopCategory{{ID: 1, Name: "卡密"}},
+			products: []contract.ShopProduct{*product},
+			bySlug:   map[string]*contract.ShopProduct{"dx": product},
+			pickStock: &contract.ShopPickStock{
+				Countries: []contract.ShopPickCountry{
+					{Code: "US", Name: "美国", Stock: 5},
+					{Code: "DE", Name: "德国", Stock: 2},
+				},
+				Brands: []contract.ShopPickBrand{
+					{Key: "random", Name: "随机"},
+					{Key: "visa", Name: "Visa"},
+					{Key: "mastercard", Name: "Mastercard"},
+				},
+				CardTypes: []contract.ShopPickCardType{
+					{Key: "random", Name: "随机"},
+					{Key: "D", Name: "D"},
+					{Key: "PD", Name: "PD"},
+				},
+			},
+		},
+		Orders: &stubOrders{
+			preview: &contract.PurchasePreview{
+				Currency: "CNY", TotalAmount: "55.00",
+				Items: []contract.PurchasePreviewItem{{
+					ProductID: 10, Quantity: 1, UnitPrice: "55.00", TotalPrice: "55.00",
+					PickCountry: "US", PickBrands: []string{"visa"}, PickCardTypes: []string{"D"}, Title: "迪士尼卡",
+				}},
+			},
+			created: &contract.PurchaseCreated{OrderID: 1, OrderNo: "O9", Currency: "CNY", TotalAmount: "55.00"},
+		},
+		Payments: &stubPayments{result: &contract.PurchasePaymentResult{OrderPaid: true}},
+		Wallet:   &stubWallet{},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+		Settings: &stubSettings{cur: "CNY", name: "商店"},
+	}, bot, func() string { return "zh-CN" })
+
+	handle := func(u webhookdomain.Update) {
+		if _, err := svc.handle(context.Background(), "tok", u); err != nil {
+			t.Fatalf("handle err: %v", err)
+		}
+	}
+
+	// /shop
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "/shop"}})
+	// 分类
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "1", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCatPrefix + "1"}})
+	// 商品
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "2", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbProdPrefix + "dx"}})
+	// 挑卡 → 选 type
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "3", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbBackPick}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "4", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbPickModePrefix + "type"}})
+	// 回复国家双字母 US
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, Text: "US"}})
+	// 选品牌 visa
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "5", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbBrandPrefix + "visa"}})
+	// 选卡类型 D
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "6", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCTypePrefix + "D"}})
+
+	// 确认下单 → 余额支付
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "7", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbConfirm}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "8", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbPayBalance}})
+
+	// 验证国家选项键盘含库存排序（US(5) 应在 DE(2) 前）
+	if len(bot.markups) == 0 {
+		t.Fatalf("expected markups")
+	}
+	foundCountryKeyboard := false
+	for _, mk := range bot.markups {
+		if keyboardContains(mk, "US") && keyboardContains(mk, "DE") {
+			foundCountryKeyboard = true
+		}
+	}
+	if !foundCountryKeyboard {
+		t.Fatalf("expected country keyboard with US/DE")
+	}
+
+	hasOrderNo := false
+	for _, m := range bot.sent {
+		if containsStr(m, "O9") {
+			hasOrderNo = true
+		}
+	}
+	if !hasOrderNo {
+		t.Fatalf("expected order no O9, got: %v", bot.sent)
+	}
 }
 
 func containsStr(haystack, needle string) bool {

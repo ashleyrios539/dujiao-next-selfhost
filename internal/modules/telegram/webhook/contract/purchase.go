@@ -46,6 +46,41 @@ type PickAttrCount struct {
 	CardType  string
 	Total     int64
 }
+
+// PickMode 挑卡模式。
+type PickMode string
+
+const (
+	PickModeRandom PickMode = "random" // 随机（仅选国家）
+	PickModeBin    PickMode = "bin"    // 挑头（BIN，不需国家）
+	PickModeType   PickMode = "type"   // 挑卡种类（国家+品牌+卡类型）
+)
+
+// ShopPickBrand 可选品牌。
+type ShopPickBrand struct {
+	Key  string // random/visa/mastercard/discover/amex/jcb
+	Name string
+}
+
+// ShopPickCardType 可选卡类型。
+type ShopPickCardType struct {
+	Key  string // random/D/PD/C
+	Name string
+}
+
+// ShopPickCountry 可选国家（含该国家可用库存，用于按库存排序）。
+type ShopPickCountry struct {
+	Code     string
+	Name     string
+	Stock    int64 // 该国家下全部 SKU 的可用库存合计
+}
+
+// ShopPickStock 商品挑卡可选维度（供 bot 端构建选择 UI 与计算可发数）。
+type ShopPickStock struct {
+	Countries []ShopPickCountry // 按库存降序
+	Brands    []ShopPickBrand
+	CardTypes []ShopPickCardType
+}
 // --- 下单/支付输入输出 DTO ---
 
 // PurchaseItem 单个订单项（含挑头/测活）。
@@ -143,6 +178,8 @@ type PurchaseCatalogReader interface {
 	GetProductBySlug(ctx context.Context, slug string) (*ShopProduct, error)
 	CountPickAttrs(ctx context.Context, productID uint) ([]PickAttrCount, error)
 	CountAvailableByBinPrefix(ctx context.Context, productID uint, bin string) (int64, error)
+	// GetPickStock 返回商品挑卡可选维度（国家按库存降序、品牌、卡类型）。
+	GetPickStock(ctx context.Context, productID uint) (*ShopPickStock, error)
 }
 
 // PurchaseOrderGateway 提供预下单与下单能力（由 container 适配到 OrderService）。
