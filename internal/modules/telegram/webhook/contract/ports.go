@@ -68,3 +68,13 @@ type Service interface {
 	// SyncRuntimeStatus 校验 token 并更新运行时状态。
 	SyncRuntimeStatus(ctx context.Context) error
 }
+
+// PurchasePorts 聚合 bot 内购买流程所需的全部端口。
+type PurchasePorts struct {
+	Catalog  PurchaseCatalogReader
+	Orders   PurchaseOrderGateway
+	Payments PurchasePaymentGateway
+	Wallet   PurchaseWalletReader
+	Identity PurchaseIdentityResolver
+	Settings PurchaseSettingReader
+}

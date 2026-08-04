@@ -15,6 +15,7 @@ type Service struct {
 	config  contract.BotConfigReader
 	tokens  contract.BotTokenResolver
 	botapi  contract.BotAPIClient
+	purchase *purchaseService
 }
 
 // NewService 构造 webhook 应用服务。
@@ -31,6 +32,18 @@ func NewService(config contract.BotConfigReader, tokens contract.BotTokenResolve
 	return &Service{config: config, tokens: tokens, botapi: botapi}
 }
 
+// WithPurchase 注入 bot 内购买端口（可选）。不注入时 bot 内购买功能禁用。
+func (s *Service) WithPurchase(ports contract.PurchasePorts) *Service {
+	s.purchase = newPurchaseService(ports, s.botapi, func() string {
+		cfg, err := s.config.GetTelegramBotConfig()
+		if err != nil {
+			return "zh-CN"
+		}
+		return resolveLocale(cfg.DefaultLocale)
+	})
+	return s
+}
+
 // HandleUpdate 处理单个 Telegram Update。
 func (s *Service) HandleUpdate(ctx context.Context, update webhookdomain.Update) error {
 	cfg, err := s.config.GetTelegramBotConfig()
@@ -44,6 +57,17 @@ func (s *Service) HandleUpdate(ctx context.Context, update webhookdomain.Update)
 	token, err := s.tokens.ResolveActiveBotToken()
 	if err != nil || token == "" {
 		return err
+	}
+
+	// bot 内购买优先消费（/shop 命令与 shop:* 回调）
+	if s.purchase != nil {
+		handled, herr := s.purchase.handle(ctx, token, update)
+		if herr != nil {
+			return herr
+		}
+		if handled {
+			return nil
+		}
 	}
 
 	locale := resolveLocale(cfg.DefaultLocale)

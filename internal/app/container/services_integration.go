@@ -36,6 +36,7 @@ import (
 	broadcastapp "github.com/dujiao-next/internal/modules/telegram/broadcast/application"
 	notifyapp "github.com/dujiao-next/internal/modules/telegram/notify/application"
 	webhookapp "github.com/dujiao-next/internal/modules/telegram/webhook/application"
+	webhookcontract "github.com/dujiao-next/internal/modules/telegram/webhook/contract"
 	notifybotapi "github.com/dujiao-next/internal/modules/telegram/notify/infrastructure/botapi"
 	webhookinfra "github.com/dujiao-next/internal/modules/telegram/webhook/infrastructure"
 	"github.com/dujiao-next/internal/platform/database/gormdb"
@@ -146,4 +147,13 @@ func (c *Container) initIntegrationServices() {
 		telegrambroadcast.NewBotTokenResolver(c.ChannelClientService),
 		webhookinfra.NewBotAPIAdapter(notifybotapi.New()),
 	)
+	// 注入 bot 内购买端口（复用商城下单/支付/钱包/商品/身份逻辑）。
+	c.TelegramWebhookService.WithPurchase(webhookcontract.PurchasePorts{
+		Catalog:  &telegramPurchasePorts{products: c.ProductReadService, cats: c.CategoryService, settings: c.SettingService},
+		Orders:   &telegramPurchasePorts{orders: c.OrderService},
+		Payments: &telegramPurchasePorts{payments: c.PaymentService},
+		Wallet:   &telegramPurchasePorts{wallet: c.WalletService},
+		Identity: &telegramPurchasePorts{auth: c.UserAuthService},
+		Settings: &telegramPurchasePorts{settings: c.SettingService},
+	})
 }

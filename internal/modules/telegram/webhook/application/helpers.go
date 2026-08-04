@@ -43,6 +43,7 @@ func localizedText(lt settingsmessaging.LocalizedText, locale string) string {
 func builtinCommands() []contract.BotCommand {
 	return []contract.BotCommand{
 		{Command: "start", Description: "开始使用 / 欢迎语"},
+		{Command: "shop", Description: "在线购买"},
 		{Command: "help", Description: "帮助中心"},
 		{Command: "menu", Description: "打开主菜单"},
 	}
