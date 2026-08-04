@@ -1,4 +1,4 @@
-package botapi
+﻿package botapi
 
 import (
 	"bytes"
@@ -23,19 +23,19 @@ type telegramSendMessageResponse struct {
 	Description string `json:"description"`
 }
 
-// Client 通过 Telegram Bot API 发送消息。
+// Client é€šè¿‡ Telegram Bot API å‘é€æ¶ˆæ¯ã€‚
 type Client struct {
 	httpClient *http.Client
 }
 
 var _ notifycontract.Sender = (*Client)(nil)
 
-// New 创建 Telegram Bot API 客户端。
+// New åˆ›å»º Telegram Bot API å®¢æˆ·ç«¯ã€‚
 func New() *Client {
 	return NewWithHTTPClient(&http.Client{Timeout: 6 * time.Second})
 }
 
-// NewWithHTTPClient 创建使用指定 HTTP 客户端的 Bot API 客户端。
+// NewWithHTTPClient åˆ›å»ºä½¿ç”¨æŒ‡å®š HTTP å®¢æˆ·ç«¯çš„ Bot API å®¢æˆ·ç«¯ã€‚
 func NewWithHTTPClient(client *http.Client) *Client {
 	if client == nil {
 		panic("telegram bot api: http client is nil")
@@ -43,7 +43,7 @@ func NewWithHTTPClient(client *http.Client) *Client {
 	return &Client{httpClient: client}
 }
 
-// SendWithBotToken 使用显式 bot token 发送 Telegram 消息。
+// SendWithBotToken ä½¿ç”¨æ˜¾å¼ bot token å‘é€ Telegram æ¶ˆæ¯ã€‚
 func (s *Client) SendWithBotToken(ctx context.Context, botToken string, options notifycontract.SendOptions) error {
 	chatID := strings.TrimSpace(options.ChatID)
 	message := strings.TrimSpace(options.Message)
@@ -227,4 +227,168 @@ func isTelegramPhotoAttachment(rawURL, displayName string) bool {
 	}
 
 	return false
+}
+
+
+
+// --- 原生 Webhook 支持（不依赖外部 licensed 客户端） ---
+
+// SetWebhook 设置 Telegram webhook。
+func (s *Client) SetWebhook(ctx context.Context, botToken, webhookURL string, secretToken string) error {
+	botToken = strings.TrimSpace(botToken)
+	whURL := strings.TrimSpace(webhookURL)
+	if botToken == "" || whURL == "" {
+		return notifycontract.ErrNotifySendFailed
+	}
+	payload := map[string]interface{}{
+		"url":            whURL,
+		"allowed_updates": []string{"message", "callback_query", "inline_query"},
+		"drop_pending_updates": true,
+	}
+	if strings.TrimSpace(secretToken) != "" {
+		payload["secret_token"] = strings.TrimSpace(secretToken)
+	}
+	return s.sendJSONRequest(ctx, botToken, "setWebhook", payload)
+}
+
+// DeleteWebhook 删除 Telegram webhook。
+func (s *Client) DeleteWebhook(ctx context.Context, botToken string) error {
+	botToken = strings.TrimSpace(botToken)
+	if botToken == "" {
+		return notifycontract.ErrNotifySendFailed
+	}
+	return s.sendJSONRequest(ctx, botToken, "deleteWebhook", map[string]interface{}{
+		"drop_pending_updates": true,
+	})
+}
+
+// AnswerCallbackQuery 应答回调查询（菜单按钮点击）。
+func (s *Client) AnswerCallbackQuery(ctx context.Context, botToken, callbackID string, options AnswerCallbackOptions) error {
+	botToken = strings.TrimSpace(botToken)
+	callbackID = strings.TrimSpace(callbackID)
+	if botToken == "" || callbackID == "" {
+		return notifycontract.ErrNotifySendFailed
+	}
+	payload := map[string]interface{}{
+		"callback_query_id": callbackID,
+	}
+	text := strings.TrimSpace(options.Text)
+	if text != "" {
+		payload["text"] = text
+	}
+	if options.ShowAlert {
+		payload["show_alert"] = true
+	}
+	if url := strings.TrimSpace(options.URL); url != "" {
+		payload["url"] = url
+	}
+	return s.sendJSONRequest(ctx, botToken, "answerCallbackQuery", payload)
+}
+
+// SetMyCommands 设置 Bot 菜单命令。
+func (s *Client) SetMyCommands(ctx context.Context, botToken string, commands []BotCommand) error {
+	botToken = strings.TrimSpace(botToken)
+	if botToken == "" {
+		return notifycontract.ErrNotifySendFailed
+	}
+	if len(commands) == 0 {
+		return nil
+	}
+	payload := map[string]interface{}{
+		"commands": commands,
+	}
+	return s.sendJSONRequest(ctx, botToken, "setMyCommands", payload)
+}
+
+// GetMe 获取 Bot 信息，用于启动时校验 token 是否有效。
+func (s *Client) GetMe(ctx context.Context, botToken string) (*BotInfo, error) {
+	botToken = strings.TrimSpace(botToken)
+	if botToken == "" {
+		return nil, notifycontract.ErrNotifySendFailed
+	}
+	requestURL := fmt.Sprintf("https://api.telegram.org/bot%s/getMe", botToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", notifycontract.ErrNotifySendFailed, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", notifycontract.ErrNotifySendFailed, err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("%w: telegram status=%d body=%s", notifycontract.ErrNotifySendFailed, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var parsed struct {
+		OK     bool     `json:"ok"`
+		Result BotInfo  `json:"result"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("%w: parse getMe response failed", notifycontract.ErrNotifySendFailed)
+	}
+	if !parsed.OK {
+		return nil, notifycontract.ErrNotifySendFailed
+	}
+	return &parsed.Result, nil
+}
+
+// SendMessage 发送纯文本消息（带可选内联键盘）。
+func (s *Client) SendMessage(ctx context.Context, botToken, chatID, message string, options SendMessageOptions) error {
+	chatID = strings.TrimSpace(chatID)
+	message = strings.TrimSpace(message)
+	botToken = strings.TrimSpace(botToken)
+	if chatID == "" || message == "" || botToken == "" {
+		return notifycontract.ErrNotifySendFailed
+	}
+	payload := map[string]interface{}{
+		"chat_id":                  chatID,
+		"text":                     message,
+		"disable_web_page_preview": options.DisableWebPagePreview,
+	}
+	if parseMode := strings.TrimSpace(options.ParseMode); parseMode != "" {
+		payload["parse_mode"] = parseMode
+	}
+	if options.ReplyMarkup != nil {
+		markupBytes, err := json.Marshal(options.ReplyMarkup)
+		if err != nil {
+			return fmt.Errorf("%w: marshal reply markup failed: %v", notifycontract.ErrNotifySendFailed, err)
+		}
+		var raw interface{}
+		if err := json.Unmarshal(markupBytes, &raw); err == nil {
+			payload["reply_markup"] = raw
+		}
+	}
+	return s.sendJSONRequest(ctx, botToken, "sendMessage", payload)
+}
+
+// AnswerCallbackOptions 是 answerCallbackQuery 的可选参数。
+type AnswerCallbackOptions struct {
+	Text      string
+	ShowAlert bool
+	URL       string
+}
+
+// BotCommand 对应 Telegram setMyCommands 的单个命令。
+type BotCommand struct {
+	Command     string `json:"command"`
+	Description string `json:"description"`
+}
+
+// BotInfo 对应 getMe 返回的 Bot 基本信息。
+type BotInfo struct {
+	ID       int64  `json:"id"`
+	IsBot    bool   `json:"is_bot"`
+	UserName string `json:"username"`
+	FirstName string `json:"first_name"`
+}
+
+// SendMessageOptions 是 SendMessage 的可选参数。
+type SendMessageOptions struct {
+	ParseMode             string
+	DisableWebPagePreview bool
+	ReplyMarkup           interface{}
 }

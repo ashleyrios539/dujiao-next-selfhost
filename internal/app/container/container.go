@@ -1,4 +1,4 @@
-package container
+﻿package container
 
 import (
 	"github.com/dujiao-next/internal/authz"
@@ -75,6 +75,7 @@ import (
 	siteconnectioncontract "github.com/dujiao-next/internal/modules/siteconnection/contract"
 	sitemapapp "github.com/dujiao-next/internal/modules/sitemap/application"
 	broadcastapp "github.com/dujiao-next/internal/modules/telegram/broadcast/application"
+	webhookapp "github.com/dujiao-next/internal/modules/telegram/webhook/application"
 	broadcastcontract "github.com/dujiao-next/internal/modules/telegram/broadcast/contract"
 	uploadapp "github.com/dujiao-next/internal/modules/upload/application"
 	walletapp "github.com/dujiao-next/internal/modules/wallet/application"
@@ -84,7 +85,7 @@ import (
 	cardcheck "github.com/dujiao-next/internal/upstream/cardcheck"
 )
 
-// Container 声明应用运行期共享的依赖表面；具体构造过程按职责拆分在同包装配文件中。
+// Container å£°æ˜Žåº”ç”¨è¿è¡ŒæœŸå…±äº«çš„ä¾èµ–è¡¨é¢ï¼›å…·ä½“æž„é€ è¿‡ç¨‹æŒ‰èŒè´£æ‹†åˆ†åœ¨åŒåŒ…è£…é…æ–‡ä»¶ä¸­ã€‚
 type Container struct {
 	Config      *config.Config
 	QueueClient *queue.Client
@@ -191,6 +192,7 @@ type Container struct {
 	ReconciliationService         *reconciliationapp.Service
 	ChannelClientService          *channelclientapp.Service
 	TelegramBroadcastService      *broadcastapp.Service
+	TelegramWebhookService        *webhookapp.Service
 	MemberLevelService            *memberlevelapp.Service
 	AdProxyService                *adproxyapp.Service
 	OrderRiskControlService       *orderriskapp.Service

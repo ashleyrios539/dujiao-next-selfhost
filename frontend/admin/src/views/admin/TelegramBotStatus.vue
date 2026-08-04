@@ -56,12 +56,14 @@ const formatLicenseStatus = (value?: string) => {
   if (normalized === 'revoked') return t('telegramBot.status.licenseStatusRevoked')
   if (normalized === 'suspended') return t('telegramBot.status.licenseStatusSuspended')
   if (normalized === 'inactive') return t('telegramBot.status.licenseStatusInactive')
+  if (normalized === 'native') return t('telegramBot.status.licenseStatusNative')
   return value
 }
 
 const getLicenseBadgeVariant = (value?: string) => {
   const normalized = value?.trim().toLowerCase()
   if (normalized === 'active') return 'default'
+  if (normalized === 'native') return 'default'
   if (normalized === 'expired' || normalized === 'revoked' || normalized === 'suspended') return 'destructive'
   return 'secondary'
 }

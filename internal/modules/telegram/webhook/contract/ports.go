@@ -1,0 +1,70 @@
+﻿package contract
+
+import (
+	"context"
+
+	settingsmessaging "github.com/dujiao-next/internal/modules/settings/schema/messaging"
+	webhookdomain "github.com/dujiao-next/internal/modules/telegram/webhook/domain"
+)
+
+// BotConfigReader 读取 Telegram Bot 配置。
+type BotConfigReader interface {
+	GetTelegramBotConfig() (settingsmessaging.TelegramBotConfigSetting, error)
+	GetTelegramBotRuntimeStatus() (settingsmessaging.TelegramBotRuntimeStatusSetting, error)
+	UpdateTelegramBotRuntimeStatus(status settingsmessaging.TelegramBotRuntimeStatusSetting) error
+}
+
+// BotTokenResolver 解析当前生效的 Bot Token。
+type BotTokenResolver interface {
+	ResolveActiveBotToken() (string, error)
+}
+
+// BotAPIClient 是 Telegram Bot API 客户端端口。
+type BotAPIClient interface {
+	SendMessage(ctx context.Context, botToken, chatID, message string, options SendMessageOptions) error
+	AnswerCallbackQuery(ctx context.Context, botToken, callbackID string, options AnswerCallbackOptions) error
+	SetMyCommands(ctx context.Context, botToken string, commands []BotCommand) error
+	GetMe(ctx context.Context, botToken string) (*BotInfo, error)
+}
+
+// SendMessageOptions 是发送消息的可选参数。
+type SendMessageOptions struct {
+	ParseMode             string
+	DisableWebPagePreview bool
+	ReplyMarkup           interface{}
+}
+
+// AnswerCallbackOptions 是应答回调的可选参数。
+type AnswerCallbackOptions struct {
+	Text      string
+	ShowAlert bool
+	URL       string
+}
+
+// BotCommand 对应 Telegram setMyCommands 的单个命令。
+type BotCommand struct {
+	Command     string `json:"command"`
+	Description string `json:"description"`
+}
+
+// BotInfo 对应 getMe 返回的 Bot 基本信息。
+type BotInfo struct {
+	ID        int64  `json:"id"`
+	IsBot     bool   `json:"is_bot"`
+	UserName  string `json:"username"`
+	FirstName string `json:"first_name"`
+}
+
+// Handler 处理单个 Telegram Update。
+type Handler interface {
+	HandleUpdate(ctx context.Context, update webhookdomain.Update) error
+}
+
+// Service 是 webhook 应用服务端口。
+type Service interface {
+	Handler
+	// ApplyWebhook 在配置启用时设置 Telegram webhook，禁用时删除。
+	ApplyWebhook(ctx context.Context, webhookURL, secretToken string) error
+	// SyncRuntimeStatus 校验 token 并更新运行时状态。
+	SyncRuntimeStatus(ctx context.Context) error
+}

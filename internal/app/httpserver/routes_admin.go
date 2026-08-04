@@ -1,4 +1,4 @@
-package httpserver
+﻿package httpserver
 
 import (
 	"github.com/dujiao-next/internal/app/container"
@@ -119,7 +119,7 @@ func registerAdminRoutes(
 	notificationtransport.RegisterAdminRoutes(authorized, adminNotificationHandler)
 	settingstransport.RegisterAdminOrderEmailTemplateRoutes(authorized, settingstransport.NewOrderEmailTemplateHandler(c.SettingService))
 	settingstransport.RegisterAdminAffiliateRoutes(authorized, settingstransport.NewAffiliateHandler(c.SettingService))
-	settingstransport.RegisterAdminTelegramBotRoutes(authorized, settingstransport.NewTelegramBotHandler(c.SettingService))
+	settingstransport.RegisterAdminTelegramBotRoutes(authorized, settingstransport.NewTelegramBotHandler(c.SettingService, settingstransport.WithWebhookReconciler(c.TelegramWebhookService, cfg.TelegramWebhook.WebhookURL, cfg.TelegramWebhook.SecretToken)))
 	settingstransport.RegisterAdminCardCheckRoutes(authorized, settingstransport.NewCardCheckTestHandler(c.CardCheckClient))
 	adminauthtransport.RegisterAdminPasswordRoutes(authorized, adminLoginHandler)
 

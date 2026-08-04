@@ -1,4 +1,4 @@
-import { createI18n } from 'vue-i18n'
+﻿import { createI18n } from 'vue-i18n'
 
 const messages = {
   'zh-CN': {
@@ -4284,6 +4284,7 @@ const messages = {
         licenseStatusRevoked: '已撤销',
         licenseStatusSuspended: '已暂停',
         licenseStatusInactive: '未激活',
+      licenseStatusNative: '原生（无需授权）',
         licenseStatusUnknown: '未知',
         licenseExpiresAt: '授权到期时间',
         licenseWarnings: '授权告警',
@@ -8761,6 +8762,7 @@ const messages = {
         licenseStatusRevoked: '已撤銷',
         licenseStatusSuspended: '已暫停',
         licenseStatusInactive: '未啟用',
+      licenseStatusNative: '原生（無需授權）',
         licenseStatusUnknown: '未知',
         licenseExpiresAt: '授權到期時間',
         licenseWarnings: '授權告警',
@@ -13238,6 +13240,7 @@ const messages = {
         licenseStatusRevoked: 'Revoked',
         licenseStatusSuspended: 'Suspended',
         licenseStatusInactive: 'Inactive',
+      licenseStatusNative: 'Native (no license required)',
         licenseStatusUnknown: 'Unknown',
         licenseExpiresAt: 'License Expires At',
         licenseWarnings: 'License Warnings',

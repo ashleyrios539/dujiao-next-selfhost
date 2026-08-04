@@ -22,6 +22,7 @@ type Config struct {
 	UserJWT      JWTConfig          `mapstructure:"user_jwt"`
 	Bootstrap    BootstrapConfig    `mapstructure:"bootstrap"`
 	TelegramAuth TelegramAuthConfig `mapstructure:"telegram_auth"`
+	TelegramWebhook TelegramWebhookConfig `mapstructure:"telegram_webhook"`
 	GoogleAuth   GoogleAuthConfig   `mapstructure:"google_auth"`
 	Redis        RedisConfig        `mapstructure:"redis"`
 	Queue        QueueConfig        `mapstructure:"queue"`
@@ -108,6 +109,12 @@ type TelegramAuthConfig struct {
 	MiniAppURL         string `mapstructure:"mini_app_url"`
 	LoginExpireSeconds int    `mapstructure:"login_expire_seconds"`
 	ReplayTTLSeconds   int    `mapstructure:"replay_ttl_seconds"`
+}
+
+// TelegramWebhookConfig native Telegram webhook config (public callback URL + secret).
+	type TelegramWebhookConfig struct {
+	WebhookURL  string `mapstructure:"webhook_url"`
+	SecretToken string `mapstructure:"secret_token"`
 }
 
 // GoogleAuthConfig Google Identity Services 登录配置。
@@ -343,6 +350,8 @@ func Load() *Config {
 	viper.SetDefault("telegram_auth.bot_token", "")
 	viper.SetDefault("telegram_auth.login_expire_seconds", 300)
 	viper.SetDefault("telegram_auth.replay_ttl_seconds", 300)
+	viper.SetDefault("telegram_webhook.webhook_url", "")
+	viper.SetDefault("telegram_webhook.secret_token", "")
 	viper.SetDefault("google_auth.enabled", false)
 	viper.SetDefault("google_auth.client_id", "")
 	viper.SetDefault("redis.enabled", true)

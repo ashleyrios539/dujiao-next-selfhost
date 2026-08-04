@@ -1,4 +1,4 @@
-package container
+﻿package container
 
 import (
 	catalogmappingbootstrap "github.com/dujiao-next/internal/bootstrap/catalogmapping"
@@ -35,11 +35,13 @@ import (
 	siteconnectionapp "github.com/dujiao-next/internal/modules/siteconnection/application"
 	broadcastapp "github.com/dujiao-next/internal/modules/telegram/broadcast/application"
 	notifyapp "github.com/dujiao-next/internal/modules/telegram/notify/application"
+	webhookapp "github.com/dujiao-next/internal/modules/telegram/webhook/application"
 	notifybotapi "github.com/dujiao-next/internal/modules/telegram/notify/infrastructure/botapi"
+	webhookinfra "github.com/dujiao-next/internal/modules/telegram/webhook/infrastructure"
 	"github.com/dujiao-next/internal/platform/database/gormdb"
 )
 
-// initIntegrationServices 装配通知、站点对接、支付、采购、渠道与 Telegram 集成。
+// initIntegrationServices è£…é…é€šçŸ¥ã€ç«™ç‚¹å¯¹æŽ¥ã€æ”¯ä»˜ã€é‡‡è´­ã€æ¸ é“ä¸Ž Telegram é›†æˆã€‚
 func (c *Container) initIntegrationServices() {
 	c.UserLoginLogService = auditlogapp.NewUserLoginService(c.UserLoginLogRepo)
 	c.AuthzAuditService = auditlogapp.NewAuthzService(c.AuthzAuditLogRepo)
@@ -137,5 +139,11 @@ func (c *Container) initIntegrationServices() {
 		telegrambroadcast.NewBotTokenResolver(c.ChannelClientService),
 		telegrambroadcast.NewDispatcher(c.QueueClient),
 		telegramNotifyService,
+	)
+
+	c.TelegramWebhookService = webhookapp.NewService(
+		c.SettingService,
+		telegrambroadcast.NewBotTokenResolver(c.ChannelClientService),
+		webhookinfra.NewBotAPIAdapter(notifybotapi.New()),
 	)
 }

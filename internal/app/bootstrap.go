@@ -8,6 +8,11 @@ import (
 	"github.com/dujiao-next/internal/app/jobs"
 	jobconsumer "github.com/dujiao-next/internal/app/jobs/consumer"
 	"github.com/dujiao-next/internal/config"
+
+	"context"
+	"time"
+
+	"github.com/dujiao-next/internal/logger"
 )
 
 // BuildRunner 构建服务运行器
@@ -29,6 +34,20 @@ func BuildRunner(cfg *config.Config, mode string) (*Runner, error) {
 		addr := cfg.Server.Host + ":" + cfg.Server.Port
 		httpService := NewHTTPService(addr, engine)
 		services = append(services, httpService)
+
+		// Native Telegram webhook bootstrap: set webhook + sync runtime status in background.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if dependencies.TelegramWebhookService != nil {
+				if err := dependencies.TelegramWebhookService.ApplyWebhook(ctx, cfg.TelegramWebhook.WebhookURL, cfg.TelegramWebhook.SecretToken); err != nil {
+					logger.Warnw("telegram_webhook_apply_failed", "error", err)
+				}
+				if err := dependencies.TelegramWebhookService.SyncRuntimeStatus(ctx); err != nil {
+					logger.Warnw("telegram_webhook_sync_status_failed", "error", err)
+				}
+			}
+		}()
 	}
 
 	// 初始化 Worker 服务

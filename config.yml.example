@@ -1,4 +1,4 @@
-# Dujiao-Next 配置文件
+﻿# Dujiao-Next 配置文件
 #
 # 首次启动前必须把下面三个占位密钥替换为彼此不同的强随机值，否则服务会拒绝启动。
 # 可分别执行三次：openssl rand -hex 32
@@ -54,6 +54,14 @@ telegram_auth:
   mini_app_url: ""  # Telegram Mini App 页面地址（需与 BotFather Web App URL 保持一致）
   login_expire_seconds: 300
   replay_ttl_seconds: 300
+
+# Telegram Bot native webhook (no external licensed client required).
+# Configure the public callback URL that Telegram can reach, and a secret token.
+# After enabling the bot in admin > Telegram Bot > Settings, the backend will
+# call setWebhook automatically on startup to receive updates directly.
+telegram_webhook:
+  webhook_url: ""  # e.g. https://shop.example.com/api/v1/telegram/webhook
+  secret_token: ""  # random secret, verified via X-Telegram-Bot-Api-Secret-Token header
 
 google_auth:
   enabled: false
