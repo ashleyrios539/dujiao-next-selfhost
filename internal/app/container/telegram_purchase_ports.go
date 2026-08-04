@@ -150,9 +150,9 @@ func (p *telegramPurchasePorts) GetPickStock(ctx context.Context, productID uint
 		},
 		CardTypes: []contract.ShopPickCardType{
 			{Key: "random", Name: "随机"},
-			{Key: "D", Name: "D"},
-			{Key: "PD", Name: "PD"},
-			{Key: "C", Name: "C"},
+			{Key: "D", Name: "D卡（含预付）"},
+			{Key: "PD", Name: "纯D（不含预付）"},
+			{Key: "C", Name: "纯C"},
 		},
 	}
 

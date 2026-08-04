@@ -2,11 +2,11 @@
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/dujiao-next/internal/logger"
 	"github.com/dujiao-next/internal/modules/telegram/webhook/contract"
 	webhookdomain "github.com/dujiao-next/internal/modules/telegram/webhook/domain"
 	"github.com/dujiao-next/internal/platform/http/response"
@@ -54,11 +54,11 @@ func (h *UpdateHandler) HandleUpdate(c *gin.Context) {
 		defer cancel()
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("telegram_webhook_panic: update=%+v recover=%v", update, r)
+				logger.Errorw("telegram_webhook_panic", "recover", r, "update_id", update.UpdateID)
 			}
 		}()
 		if err := h.service.HandleUpdate(ctx, update); err != nil {
-			log.Printf("telegram_webhook_handle_error: %v", err)
+			logger.Warnw("telegram_webhook_handle_error", "error", err, "update_id", update.UpdateID)
 		}
 	}()
 

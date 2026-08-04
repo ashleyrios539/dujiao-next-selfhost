@@ -373,6 +373,10 @@ func (s *purchaseService) selectProduct(ctx context.Context, token string, chatI
 		sess.step = purchaseStepConfigure
 		sess.selected = product
 		sess.selectedSKUID = 0
+		// 有 SKU 时默认选中第一个，避免用户漏选而报 "SKU not selected"。
+		if len(product.SKUs) > 0 {
+			sess.selectedSKUID = product.SKUs[0].ID
+		}
 		sess.quantity = 1
 		sess.pickMode = ""
 		sess.pickCountry = ""
