@@ -2,6 +2,7 @@
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -51,7 +52,14 @@ func (h *UpdateHandler) HandleUpdate(c *gin.Context) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		_ = h.service.HandleUpdate(ctx, update)
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("telegram_webhook_panic: update=%+v recover=%v", update, r)
+			}
+		}()
+		if err := h.service.HandleUpdate(ctx, update); err != nil {
+			log.Printf("telegram_webhook_handle_error: %v", err)
+		}
 	}()
 
 	response.Success(c, gin.H{"ok": true})
