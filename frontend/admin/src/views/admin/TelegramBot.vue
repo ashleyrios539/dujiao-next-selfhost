@@ -21,6 +21,11 @@ const isConnected = computed(() => {
   return runtimeStatus.value.connected === true
 })
 
+const isNativeLicense = computed(() => {
+  const status = runtimeStatus.value?.license_status?.trim().toLowerCase()
+  return status === 'native'
+})
+
 const fetchRuntimeStatus = async () => {
   loading.value = true
   try {
@@ -58,6 +63,7 @@ const formatLicenseStatus = (value?: string) => {
   if (normalized === 'revoked') return t('telegramBot.status.licenseStatusRevoked')
   if (normalized === 'suspended') return t('telegramBot.status.licenseStatusSuspended')
   if (normalized === 'inactive') return t('telegramBot.status.licenseStatusInactive')
+  if (normalized === 'native') return t('telegramBot.status.licenseStatusNative')
   return value
 }
 
@@ -89,8 +95,8 @@ onMounted(() => {
       <p class="text-muted-foreground">{{ t('telegramBot.overview.subtitle') }}</p>
     </div>
 
-    <!-- License Purchase Notice -->
-    <Card class="border-amber-200 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-950/20">
+    <!-- License Purchase Notice (hidden for native webhook mode) -->
+    <Card v-if="!isNativeLicense" class="border-amber-200 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-950/20">
       <CardContent class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <div class="flex items-start gap-3">
           <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
