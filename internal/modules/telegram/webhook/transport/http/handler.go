@@ -1,8 +1,10 @@
 ﻿package webhookhttp
 
 import (
+	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/dujiao-next/internal/modules/telegram/webhook/contract"
 	webhookdomain "github.com/dujiao-next/internal/modules/telegram/webhook/domain"
@@ -42,9 +44,14 @@ func (h *UpdateHandler) HandleUpdate(c *gin.Context) {
 		return
 	}
 
-	// 异步处理，立即返回 200 给 Telegram（避免重复推送）
+	// 异步处理，立即返回 200 给 Telegram（避免重复推送）。
+	// 注意：不能用 c.Request.Context()——它随 HTTP 请求返回而取消，异步 goroutine
+	// 拿到的将是已取消的 context，导致后续 SendMessage 等 Bot API 调用全部失败。
+	// 这里改用独立的 context（带超时），保证后台处理有完整生命周期。
 	go func() {
-		_ = h.service.HandleUpdate(c.Request.Context(), update)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_ = h.service.HandleUpdate(ctx, update)
 	}()
 
 	response.Success(c, gin.H{"ok": true})
