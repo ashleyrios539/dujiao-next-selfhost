@@ -66,3 +66,13 @@ func (a *BotAPIAdapter) GetMe(ctx context.Context, botToken string) (*contract.B
 		FirstName: info.FirstName,
 	}, nil
 }
+
+// SetWebhook 设置 Telegram webhook。
+func (a *BotAPIAdapter) SetWebhook(ctx context.Context, botToken, webhookURL, secretToken string) error {
+	return a.client.SetWebhook(ctx, botToken, webhookURL, secretToken)
+}
+
+// DeleteWebhook 删除 Telegram webhook。
+func (a *BotAPIAdapter) DeleteWebhook(ctx context.Context, botToken string) error {
+	return a.client.DeleteWebhook(ctx, botToken)
+}

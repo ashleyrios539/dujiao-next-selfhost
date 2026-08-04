@@ -25,6 +25,10 @@ type BotAPIClient interface {
 	AnswerCallbackQuery(ctx context.Context, botToken, callbackID string, options AnswerCallbackOptions) error
 	SetMyCommands(ctx context.Context, botToken string, commands []BotCommand) error
 	GetMe(ctx context.Context, botToken string) (*BotInfo, error)
+	// SetWebhook 设置 Telegram webhook（secretToken 通过 X-Telegram-Bot-Api-Secret-Token 校验）。
+	SetWebhook(ctx context.Context, botToken, webhookURL, secretToken string) error
+	// DeleteWebhook 删除 Telegram webhook。
+	DeleteWebhook(ctx context.Context, botToken string) error
 }
 
 // SendMessageOptions 是发送消息的可选参数。

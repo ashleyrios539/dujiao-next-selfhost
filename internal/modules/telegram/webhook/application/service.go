@@ -95,15 +95,21 @@ func (s *Service) ApplyWebhook(ctx context.Context, webhookURL, secretToken stri
 		return contract.ErrTokenUnavailable
 	}
 
+	// 未启用或未配置 webhook_url：删除 webhook、清空命令，标记 disabled。
 	if !cfg.Enabled || strings.TrimSpace(webhookURL) == "" {
+		_ = s.botapi.DeleteWebhook(ctx, token)
 		_ = s.botapi.SetMyCommands(ctx, token, nil)
 		return s.updateWebhookStatus(cfg, false, "", "disabled", nil)
 	}
 
+	// 启用且配置了 webhook_url：真正向 Telegram 注册 webhook 并注册命令。
+	if err := s.botapi.SetWebhook(ctx, token, strings.TrimSpace(webhookURL), strings.TrimSpace(secretToken)); err != nil {
+		return s.updateWebhookStatus(cfg, true, "", "set_webhook_failed", []string{err.Error()})
+	}
 	if err := s.botapi.SetMyCommands(ctx, token, builtinCommands()); err != nil {
 		return s.updateWebhookStatus(cfg, true, "", "set_commands_failed", []string{err.Error()})
 	}
-	return nil
+	return s.updateWebhookStatus(cfg, true, "", "active", nil)
 }
 
 // SyncRuntimeStatus 校验 token 并更新运行时状态。

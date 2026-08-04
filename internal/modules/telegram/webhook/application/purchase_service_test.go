@@ -96,6 +96,8 @@ func (f *fakeBotAPI) AnswerCallbackQuery(context.Context, string, string, contra
 }
 func (f *fakeBotAPI) SetMyCommands(context.Context, string, []contract.BotCommand) error { return nil }
 func (f *fakeBotAPI) GetMe(context.Context, string) (*contract.BotInfo, error)            { return &contract.BotInfo{}, nil }
+func (f *fakeBotAPI) SetWebhook(context.Context, string, string, string) error            { return nil }
+func (f *fakeBotAPI) DeleteWebhook(context.Context, string) error                          { return nil }
 
 func TestPurchaseServiceCategoryBrowse(t *testing.T) {
 	bot := &fakeBotAPI{}
