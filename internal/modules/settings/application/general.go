@@ -253,6 +253,26 @@ func (s *Service) GetRegistrationEnabled(defaultValue bool) (bool, error) {
 	return parseSettingBool(raw), nil
 }
 
+// GetThirdPartyRegistrationEnabled 获取第三方（Telegram/Google）首次登录自动建号开关。
+// 独立于 registration_enabled：关闭邮箱注册时，第三方登录仍可创建账号。
+func (s *Service) GetThirdPartyRegistrationEnabled(defaultValue bool) (bool, error) {
+	if s == nil {
+		return defaultValue, nil
+	}
+	value, err := s.GetByKey(constants.SettingKeyRegistrationConfig)
+	if err != nil {
+		return defaultValue, err
+	}
+	if value == nil {
+		return defaultValue, nil
+	}
+	raw, ok := value[constants.SettingFieldThirdPartyRegistrationEnabled]
+	if !ok {
+		return defaultValue, nil
+	}
+	return parseSettingBool(raw), nil
+}
+
 // GetEmailVerificationEnabled 获取邮箱验证开关
 func (s *Service) GetEmailVerificationEnabled(defaultValue bool) (bool, error) {
 	if s == nil {

@@ -323,7 +323,9 @@ func (s *Service) loadGoogleRegistrationSnapshot() (googleRegistrationSnapshot, 
 	if s == nil || s.settingService == nil {
 		return snapshot, nil
 	}
-	enabled, err := s.settingService.GetRegistrationEnabled(true)
+	// Google 首次登录自动建号由独立的第三方注册开关控制，
+	// 不受邮箱注册开关（registration_enabled）限制。
+	enabled, err := s.settingService.GetThirdPartyRegistrationEnabled(true)
 	if err != nil {
 		return snapshot, err
 	}

@@ -48,6 +48,7 @@ const footerLinksMaxCount = 20
 
 const registrationForm = reactive({
   registration_enabled: true,
+  third_party_registration_enabled: true,
   email_verification_enabled: true,
   email_domain_allowlist_enabled: false,
   allowed_email_domains_text: '',
@@ -549,6 +550,7 @@ const fetchSettings = async () => {
     if (registrationRes.data && registrationRes.data.data) {
       const regData = registrationRes.data.data as Record<string, unknown>
       registrationForm.registration_enabled = regData.registration_enabled !== false
+      registrationForm.third_party_registration_enabled = regData.third_party_registration_enabled !== false
       registrationForm.email_verification_enabled = regData.email_verification_enabled !== false
       registrationForm.email_domain_allowlist_enabled = regData.email_domain_allowlist_enabled === true
       registrationForm.allowed_email_domains_text = joinAllowedEmailDomains(regData.allowed_email_domains)
@@ -592,6 +594,7 @@ const saveRegistrationSettings = async () => {
     key: 'registration_config',
     value: {
       registration_enabled: registrationForm.registration_enabled,
+      third_party_registration_enabled: registrationForm.third_party_registration_enabled,
       email_verification_enabled: registrationForm.email_verification_enabled,
       email_domain_allowlist_enabled: registrationForm.email_domain_allowlist_enabled,
       allowed_email_domains: splitAllowedEmailDomains(registrationForm.allowed_email_domains_text),
@@ -840,6 +843,13 @@ onMounted(() => {
             <div>
               <Label for="registration-enabled" class="text-sm font-medium">{{ t('admin.settings.registration.registrationEnabled') }}</Label>
               <p class="text-xs text-muted-foreground">{{ t('admin.settings.registration.registrationEnabledDesc') }}</p>
+            </div>
+          </div>
+          <div class="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 px-4 py-3 sm:flex-row sm:items-center">
+            <Switch id="third-party-registration-enabled" v-model="registrationForm.third_party_registration_enabled" />
+            <div>
+              <Label for="third-party-registration-enabled" class="text-sm font-medium">{{ t('admin.settings.registration.thirdPartyRegistrationEnabled') }}</Label>
+              <p class="text-xs text-muted-foreground">{{ t('admin.settings.registration.thirdPartyRegistrationEnabledDesc') }}</p>
             </div>
           </div>
           <div class="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 px-4 py-3 sm:flex-row sm:items-center">

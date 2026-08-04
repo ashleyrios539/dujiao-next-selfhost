@@ -45,7 +45,9 @@ func (s *Service) findOrCreateTelegramUser(verified *telegramauthapp.IdentityVer
 		return user, nil
 	}
 	if s.settingService != nil {
-		registrationEnabled, err := s.settingService.GetRegistrationEnabled(true)
+		// Telegram 首次登录自动建号由独立的第三方注册开关控制，
+		// 不受邮箱注册开关（registration_enabled）限制。
+		registrationEnabled, err := s.settingService.GetThirdPartyRegistrationEnabled(true)
 		if err != nil {
 			return nil, err
 		}

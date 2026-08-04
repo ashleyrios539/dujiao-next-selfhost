@@ -94,12 +94,12 @@ func TestLoginVerifiedGoogleCreatesVerifiedUserAndIdentity(t *testing.T) {
 }
 
 func TestLoginVerifiedGoogleRespectsRegistrationAndEmailDomainSettings(t *testing.T) {
-	t.Run("registration disabled", func(t *testing.T) {
+	t.Run("third-party registration disabled", func(t *testing.T) {
 		svc, settings, _ := setupTelegramOAuthTestService(t)
 		if _, err := settings.Update(constants.SettingKeyRegistrationConfig, map[string]interface{}{
-			constants.SettingFieldRegistrationEnabled: false,
+			constants.SettingFieldThirdPartyRegistrationEnabled: false,
 		}); err != nil {
-			t.Fatalf("disable registration: %v", err)
+			t.Fatalf("disable third-party registration: %v", err)
 		}
 		_, err := svc.LoginVerifiedGoogle(verifiedGoogleIdentity("new@gmail.com", "google-disabled", true))
 		if !errors.Is(err, userauthapp.ErrRegistrationDisabled) {

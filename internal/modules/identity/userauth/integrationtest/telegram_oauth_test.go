@@ -162,13 +162,14 @@ func setupTelegramOAuthTestService(t *testing.T, telegramService ...*telegramaut
 	return svc, settingSvc, db
 }
 
-func TestFindOrCreateTelegramUserRespectsRegistrationSetting(t *testing.T) {
+func TestFindOrCreateTelegramUserRespectsThirdPartyRegistrationSetting(t *testing.T) {
 	svc, settings, db := setupTelegramOAuthTestService(t)
 
+	// 关闭第三方注册开关 → Telegram 首次建号被拒。
 	if _, err := settings.Update(constants.SettingKeyRegistrationConfig, map[string]interface{}{
-		constants.SettingFieldRegistrationEnabled: false,
+		constants.SettingFieldThirdPartyRegistrationEnabled: false,
 	}); err != nil {
-		t.Fatalf("disable registration failed: %v", err)
+		t.Fatalf("disable third-party registration failed: %v", err)
 	}
 
 	user, _, _, err := svc.ProvisionTelegramChannelIdentity(userauthapp.TelegramChannelIdentityInput{
@@ -185,6 +186,37 @@ func TestFindOrCreateTelegramUserRespectsRegistrationSetting(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("expected no users created, got %d", count)
+	}
+}
+
+func TestFindOrCreateTelegramUserIgnoresEmailRegistrationDisabled(t *testing.T) {
+	svc, settings, db := setupTelegramOAuthTestService(t)
+
+	// 仅关闭邮箱注册（registration_enabled=false），第三方开关仍默认开 →
+	// Telegram 首次建号应成功（Telegram 为主账号策略）。
+	if _, err := settings.Update(constants.SettingKeyRegistrationConfig, map[string]interface{}{
+		constants.SettingFieldRegistrationEnabled: false,
+	}); err != nil {
+		t.Fatalf("disable email registration failed: %v", err)
+	}
+
+	user, _, _, err := svc.ProvisionTelegramChannelIdentity(userauthapp.TelegramChannelIdentityInput{
+		ChannelUserID: "10002",
+		Username:      "tg_new_user2",
+	})
+	if err != nil {
+		t.Fatalf("expected Telegram auto-account despite email registration disabled, got err=%v", err)
+	}
+	if user == nil || user.ID == 0 {
+		t.Fatalf("expected created user, got %+v", user)
+	}
+
+	var count int64
+	if err := db.Model(&userdomain.User{}).Count(&count).Error; err != nil {
+		t.Fatalf("count users failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 user created, got %d", count)
 	}
 }
 
@@ -337,9 +369,9 @@ func TestTelegramMiniAppLoginReturnsRegistrationDisabledWhenCreatingNewUser(t *t
 	svc, settings, _ := setupTelegramOAuthTestService(t, telegramSvc)
 
 	if _, err := settings.Update(constants.SettingKeyRegistrationConfig, map[string]interface{}{
-		constants.SettingFieldRegistrationEnabled: false,
+		constants.SettingFieldThirdPartyRegistrationEnabled: false,
 	}); err != nil {
-		t.Fatalf("disable registration failed: %v", err)
+		t.Fatalf("disable third-party registration failed: %v", err)
 	}
 
 	initData := buildUserAuthTestTelegramMiniAppInitData(t, "test-bot-token", time.Now().Unix(), `{"id":10003,"first_name":"Mini","last_name":"Blocked","username":"mini_blocked"}`)
