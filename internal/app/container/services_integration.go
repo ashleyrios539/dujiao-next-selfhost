@@ -149,11 +149,13 @@ func (c *Container) initIntegrationServices() {
 	)
 	// 注入 bot 内购买端口（复用商城下单/支付/钱包/商品/身份逻辑）。
 	c.TelegramWebhookService.WithPurchase(webhookcontract.PurchasePorts{
-		Catalog:  &telegramPurchasePorts{products: c.ProductReadService, cats: c.CategoryService, settings: c.SettingService},
-		Orders:   &telegramPurchasePorts{orders: c.OrderService},
-		Payments: &telegramPurchasePorts{payments: c.PaymentService},
-		Wallet:   &telegramPurchasePorts{wallet: c.WalletService},
-		Identity: &telegramPurchasePorts{auth: c.UserAuthService},
-		Settings: &telegramPurchasePorts{settings: c.SettingService},
+		Catalog:     &telegramPurchasePorts{products: c.ProductReadService, cats: c.CategoryService, settings: c.SettingService},
+		Orders:      &telegramPurchasePorts{orders: c.OrderService},
+		Payments:    &telegramPurchasePorts{payments: c.PaymentService},
+		Wallet:      &telegramPurchasePorts{wallet: c.WalletService},
+		Identity:    &telegramPurchasePorts{auth: c.UserAuthService},
+		Settings:    &telegramPurchasePorts{settings: c.SettingService},
+		OrderReader: &telegramPurchasePorts{orders: c.OrderService},
+		Recharge:    &telegramPurchasePorts{payments: c.PaymentService, wallet: c.WalletService},
 	})
 }

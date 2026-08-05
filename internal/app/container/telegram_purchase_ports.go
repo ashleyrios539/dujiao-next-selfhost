@@ -12,13 +12,17 @@ import (
 	productdomain "github.com/dujiao-next/internal/modules/catalog/product/domain"
 	"github.com/dujiao-next/internal/modules/identity/userauth/application"
 	orderapp "github.com/dujiao-next/internal/modules/order/application"
+	ordercontract "github.com/dujiao-next/internal/modules/order/contract"
 	paymentapp "github.com/dujiao-next/internal/modules/payment/application"
 	paymentcontract "github.com/dujiao-next/internal/modules/payment/contract"
+	reseller "github.com/dujiao-next/internal/modules/reseller/contract"
 	settingsapp "github.com/dujiao-next/internal/modules/settings/application"
 	"github.com/dujiao-next/internal/modules/telegram/webhook/contract"
 	walletapp "github.com/dujiao-next/internal/modules/wallet/application"
 	walletcontract "github.com/dujiao-next/internal/modules/wallet/contract"
 	"github.com/dujiao-next/internal/shared/countries"
+	"github.com/dujiao-next/internal/shared/money"
+	"github.com/shopspring/decimal"
 )
 
 // telegramPurchasePorts 把业务模块具体服务适配为 bot 内购买所需的窄端口。
@@ -412,7 +416,145 @@ func (p *telegramPurchasePorts) ResolveOrProvision(_ context.Context, channelUse
 	if user == nil {
 		return nil, fmt.Errorf("identity resolution failed")
 	}
-	return &contract.PurchaseUser{ID: user.ID, DisplayName: user.DisplayName}, nil
+	return &contract.PurchaseUser{ID: user.ID, DisplayName: user.DisplayName, Locale: user.Locale}, nil
+}
+
+// SetLocale 持久化商城账号语言偏好（bot 内切换语言用）。
+func (p *telegramPurchasePorts) SetLocale(_ context.Context, userID uint, locale string) error {
+	if p.auth == nil {
+		return fmt.Errorf("identity service unavailable")
+	}
+	_, err := p.auth.UpdateProfile(userID, nil, &locale)
+	return err
+}
+
+// --- PurchaseOrderReader ---
+
+// ListOrders 返回用户订单列表（bot「我的订单」）。
+func (p *telegramPurchasePorts) ListOrders(ctx context.Context, userID uint, page, pageSize int) ([]contract.ShopOrder, int64, error) {
+	if p.orders == nil {
+		return nil, 0, nil
+	}
+	orders, total, err := p.orders.ListOrdersByUserForTenant(reseller.MainTenantContext(""), ordercontract.ListFilter{
+		Page:     page,
+		PageSize: pageSize,
+		UserID:   userID,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]contract.ShopOrder, 0, len(orders))
+	for i := range orders {
+		title := ""
+		if len(orders[i].Items) > 0 {
+			title = p.localeValue(orders[i].Items[0].TitleJSON)
+		}
+		out = append(out, contract.ShopOrder{
+			OrderNo:     orders[i].OrderNo,
+			Status:      orders[i].Status,
+			Currency:    orders[i].Currency,
+			TotalAmount: orders[i].TotalAmount.String(),
+			CreatedAt:   orders[i].CreatedAt.Format("2006-01-02 15:04"),
+			Title:       title,
+		})
+	}
+	return out, total, nil
+}
+
+// GetOrderByOrderNo 返回订单详情（含已发货卡密 payload）。
+func (p *telegramPurchasePorts) GetOrderByOrderNo(ctx context.Context, userID uint, orderNo string) (*contract.ShopOrderDetail, error) {
+	if p.orders == nil {
+		return nil, fmt.Errorf("order service unavailable")
+	}
+	order, err := p.orders.GetOrderByUserOrderNoForTenant(reseller.MainTenantContext(""), orderNo, userID)
+	if err != nil {
+		return nil, err
+	}
+	detail := &contract.ShopOrderDetail{
+		OrderNo:     order.OrderNo,
+		Status:      order.Status,
+		Currency:    order.Currency,
+		TotalAmount: order.TotalAmount.String(),
+		CreatedAt:   order.CreatedAt.Format("2006-01-02 15:04"),
+	}
+	for i := range order.Items {
+		detail.Items = append(detail.Items, contract.ShopOrderItem{
+			Title:     p.localeValue(order.Items[i].TitleJSON),
+			Quantity:  order.Items[i].Quantity,
+			UnitPrice: order.Items[i].UnitPrice.String(),
+		})
+	}
+	if order.Fulfillment != nil {
+		detail.Fulfillment = &contract.ShopFulfillment{
+			Type:    order.Fulfillment.Type,
+			Status:  order.Fulfillment.Status,
+			Payload: order.Fulfillment.Payload,
+		}
+	}
+	return detail, nil
+}
+
+// --- PurchaseRechargeGateway ---
+
+// CreateRecharge 创建钱包充值订单并返回支付链接（复用网页端充值流程）。
+func (p *telegramPurchasePorts) CreateRecharge(ctx context.Context, input contract.PurchaseRechargeInput) (*contract.ShopRecharge, error) {
+	if p.payments == nil {
+		return nil, fmt.Errorf("payment service unavailable")
+	}
+	amount, err := decimal.NewFromString(strings.TrimSpace(input.Amount))
+	if err != nil || amount.LessThanOrEqual(decimal.Zero) {
+		return nil, fmt.Errorf("invalid recharge amount")
+	}
+	result, err := p.payments.CreateWalletRechargePayment(paymentapp.CreateWalletRechargePaymentInput{
+		UserID:    input.UserID,
+		ChannelID: input.ChannelID,
+		Amount:    money.FromDecimal(amount.Round(2)),
+		Currency:  input.Currency,
+		Context:   ctx,
+	})
+	if err != nil {
+		return nil, translateOrderError(err)
+	}
+	recharge := result.Recharge
+	if recharge == nil {
+		return nil, fmt.Errorf("recharge order creation failed")
+	}
+	out := &contract.ShopRecharge{
+		RechargeNo:    recharge.RechargeNo,
+		Amount:        recharge.Amount.String(),
+		PayableAmount: recharge.PayableAmount.String(),
+		Currency:      recharge.Currency,
+		Status:        recharge.Status,
+	}
+	if result.Payment != nil {
+		out.PayURL = result.Payment.PayURL
+		out.QRCode = result.Payment.QRCode
+		out.ProviderType = result.Payment.ProviderType
+		out.ChannelType = result.Payment.ChannelType
+		out.InteractionMode = result.Payment.InteractionMode
+	}
+	return out, nil
+}
+
+// GetRechargeStatus 查询充值订单状态（bot 内展示到账结果）。
+func (p *telegramPurchasePorts) GetRechargeStatus(_ context.Context, userID uint, rechargeNo string) (*contract.ShopRecharge, error) {
+	if p.wallet == nil {
+		return nil, fmt.Errorf("wallet service unavailable")
+	}
+	recharge, err := p.wallet.GetRechargeOrderByRechargeNo(userID, rechargeNo)
+	if err != nil {
+		return nil, err
+	}
+	if recharge == nil {
+		return nil, fmt.Errorf("recharge order not found")
+	}
+	return &contract.ShopRecharge{
+		RechargeNo:    recharge.RechargeNo,
+		Amount:        recharge.Amount.String(),
+		PayableAmount: recharge.PayableAmount.String(),
+		Currency:      recharge.Currency,
+		Status:        recharge.Status,
+	}, nil
 }
 
 // --- PurchaseSettingReader ---

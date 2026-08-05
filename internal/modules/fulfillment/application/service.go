@@ -51,6 +51,11 @@ func (s *Service) SetDownstreamCallbackService(svc DownstreamCallbackEnqueuer) {
 	s.downstreamCallbackSvc = svc
 }
 
+// SetBotNotifier 设置发货完成后的 Telegram 通知器（native 模式下由 container 注入直发实现）。
+func (s *Service) SetBotNotifier(n BotNotifier) {
+	s.botNotifier = n
+}
+
 // Options 汇总交付用例依赖。
 type Options struct {
 	OrderStore            ordercontract.Store

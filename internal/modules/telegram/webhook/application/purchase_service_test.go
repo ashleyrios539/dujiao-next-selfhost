@@ -88,6 +88,8 @@ func (i *stubIdentity) ResolveOrProvision(context.Context, string, string, strin
 	return i.user, nil
 }
 
+func (i *stubIdentity) SetLocale(context.Context, uint, string) error { return nil }
+
 type stubSettings struct{ cur, name string }
 
 func (s *stubSettings) GetCurrency(context.Context) (string, error) { return s.cur, nil }
@@ -587,5 +589,136 @@ func TestPurchaseServicePayOnlineMultiChannel(t *testing.T) {
 	}
 	if !containsStr(joined, "O3") || !containsStr(joined, "https://pay.example.com/3") {
 		t.Fatalf("expected order no and pay url, got: %v", bot.sent)
+	}
+}
+
+type stubOrderReader struct {
+	orders []contract.ShopOrder
+	detail *contract.ShopOrderDetail
+}
+
+func (o *stubOrderReader) ListOrders(context.Context, uint, int, int) ([]contract.ShopOrder, int64, error) {
+	return o.orders, int64(len(o.orders)), nil
+}
+func (o *stubOrderReader) GetOrderByOrderNo(context.Context, uint, string) (*contract.ShopOrderDetail, error) {
+	return o.detail, nil
+}
+
+type stubRecharge struct {
+	recharge *contract.ShopRecharge
+}
+
+func (r *stubRecharge) CreateRecharge(context.Context, contract.PurchaseRechargeInput) (*contract.ShopRecharge, error) {
+	return r.recharge, nil
+}
+func (r *stubRecharge) GetRechargeStatus(context.Context, uint, string) (*contract.ShopRecharge, error) {
+	return r.recharge, nil
+}
+
+func TestPurchaseServiceOrdersAndDetail(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog:     &stubCatalog{},
+		Orders:      &stubOrders{},
+		Identity:    &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u", Locale: "zh-CN"}},
+		OrderReader: &stubOrderReader{
+			orders: []contract.ShopOrder{{OrderNo: "O1", Status: "completed", Currency: "CNY", TotalAmount: "10.00", Title: "迪士尼卡"}},
+			detail: &contract.ShopOrderDetail{
+				OrderNo: "O1", Status: "completed", Currency: "CNY", TotalAmount: "10.00",
+				Items:      []contract.ShopOrderItem{{Title: "迪士尼卡", Quantity: 1, UnitPrice: "10.00"}},
+				Fulfillment: &contract.ShopFulfillment{Type: "auto", Status: "delivered", Payload: "CARD-1\nCARD-2"},
+			},
+		},
+	}, bot, func() string { return "zh-CN" })
+
+	// 我的订单
+	if err := svc.renderOrders(context.Background(), "tok", 100, 1, webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("renderOrders err: %v", err)
+	}
+	if len(bot.sent) == 0 || !containsStr(bot.sent[0], "我的订单") {
+		t.Fatalf("expected order list title, got: %v", bot.sent)
+	}
+	if len(bot.markups) == 0 || !keyboardContains(bot.markups[len(bot.markups)-1], "迪士尼卡") {
+		t.Fatalf("expected order button with 迪士尼卡, got: %+v", bot.markups)
+	}
+	// 订单详情（含卡密）
+	if err := svc.showOrderDetail(context.Background(), "tok", 100, "O1", webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("showOrderDetail err: %v", err)
+	}
+	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "CARD-1") || !containsStr(last, "CARD-2") {
+		t.Fatalf("expected cards in detail, got: %v", last)
+	}
+}
+
+func TestPurchaseServiceLanguageToggle(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog:  &stubCatalog{},
+		Orders:   &stubOrders{},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u", Locale: "zh-CN"}},
+	}, bot, func() string { return "zh-CN" })
+
+	if err := svc.toggleLanguage(context.Background(), "tok", 100, webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("toggleLanguage err: %v", err)
+	}
+	if len(bot.sent) == 0 || !containsStr(bot.sent[0], "English") {
+		t.Fatalf("expected English switch message, got: %v", bot.sent)
+	}
+}
+
+func TestPurchaseServiceRecharge(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog:  &stubCatalog{},
+		Orders:   &stubOrders{},
+		Payments: &stubPayments{channels: []contract.ShopPaymentChannel{{ID: 1, Name: "USDT"}}},
+		Recharge: &stubRecharge{recharge: &contract.ShopRecharge{
+			RechargeNo: "WR1", PayableAmount: "100.00", Currency: "CNY", Status: "pending",
+			PayURL: "https://pay.example.com/wr1",
+		}},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u", Locale: "zh-CN"}},
+		Settings: &stubSettings{cur: "CNY"},
+	}, bot, func() string { return "zh-CN" })
+
+	// 进入充值
+	if err := svc.enterRecharge(context.Background(), "tok", 100, &webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("enterRecharge err: %v", err)
+	}
+	// 输入金额
+	view := svc.snapshot(100)
+	if err := svc.handleRechargeAmount(context.Background(), "tok", view, "100", &webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("handleRechargeAmount err: %v", err)
+	}
+	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "WR1") || !containsStr(last, "https://pay.example.com/wr1") {
+		t.Fatalf("expected recharge order + pay url, got: %v", last)
+	}
+}
+
+func TestPurchaseServiceBinStock(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog: &stubCatalog{
+			products: []contract.ShopProduct{
+				{ID: 1, Title: "卡A", PriceAmount: "10.00", Currency: "CNY", PickEnabled: true},
+				{ID: 2, Title: "卡B", PriceAmount: "20.00", Currency: "CNY", PickEnabled: false},
+			},
+			binCountBy: map[string]int64{"123456": 5},
+		},
+		Orders:   &stubOrders{},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+	}, bot, func() string { return "zh-CN" })
+
+	if err := svc.enterBinStock(context.Background(), "tok", 100); err != nil {
+		t.Fatalf("enterBinStock err: %v", err)
+	}
+	view := svc.snapshot(100)
+	if err := svc.handleBinStockInput(context.Background(), "tok", view, "123456"); err != nil {
+		t.Fatalf("handleBinStockInput err: %v", err)
+	}
+	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "5") || !containsStr(last, "卡A") {
+		t.Fatalf("expected bin stock summary, got: %v", last)
 	}
 }

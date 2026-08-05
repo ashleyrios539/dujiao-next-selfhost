@@ -212,6 +212,7 @@ type PurchasePaymentResult struct {
 type PurchaseUser struct {
 	ID          uint
 	DisplayName string
+	Locale      string // 商城账号语言偏好（users.locale），用于 bot 会话语言
 }
 
 // --- 端口接口 ---
@@ -255,10 +256,81 @@ type PurchaseWalletReader interface {
 // PurchaseIdentityResolver 解析 Telegram 渠道身份到商城用户；未绑定则自动建号绑定。
 type PurchaseIdentityResolver interface {
 	ResolveOrProvision(ctx context.Context, channelUserID, username, firstName, lastName string) (*PurchaseUser, error)
+	// SetLocale 持久化商城账号的语言偏好（bot 内切换语言用）。
+	SetLocale(ctx context.Context, userID uint, locale string) error
 }
 
 // PurchaseSettingReader 提供站点级展示配置。
 type PurchaseSettingReader interface {
 	GetCurrency(ctx context.Context) (string, error)
 	GetSiteName(ctx context.Context) (string, error)
+}
+
+// ShopOrderItem 订单项展示项。
+type ShopOrderItem struct {
+	Title     string
+	Quantity  int
+	UnitPrice string
+}
+
+// ShopFulfillment 交付记录（卡密明文的载体）。
+type ShopFulfillment struct {
+	Type    string // auto / manual
+	Status  string
+	Payload string // 卡密明文（auto），或人工交付内容
+}
+
+// ShopOrder 订单列表项。
+type ShopOrder struct {
+	OrderNo     string
+	Status      string
+	Currency    string
+	TotalAmount string
+	CreatedAt   string // 格式化时间
+	Title       string // 首个商品标题（摘要）
+}
+
+// ShopOrderDetail 订单详情（含已发货卡密）。
+type ShopOrderDetail struct {
+	OrderNo     string
+	Status      string
+	Currency    string
+	TotalAmount string
+	CreatedAt   string
+	Items       []ShopOrderItem
+	Fulfillment *ShopFulfillment
+}
+
+// PurchaseOrderReader 提供 bot 内订单列表与详情（含卡密）查询。
+type PurchaseOrderReader interface {
+	ListOrders(ctx context.Context, userID uint, page, pageSize int) ([]ShopOrder, int64, error)
+	GetOrderByOrderNo(ctx context.Context, userID uint, orderNo string) (*ShopOrderDetail, error)
+}
+
+// ShopRecharge 充值订单展示项。
+type ShopRecharge struct {
+	RechargeNo      string
+	Amount          string
+	PayableAmount   string
+	Currency        string
+	Status          string
+	PayURL          string
+	QRCode          string
+	ProviderType    string
+	ChannelType     string
+	InteractionMode string
+}
+
+// PurchaseRechargeInput 创建充值订单输入。
+type PurchaseRechargeInput struct {
+	UserID    uint
+	ChannelID uint
+	Amount    string
+	Currency  string
+}
+
+// PurchaseRechargeGateway 提供 bot 内钱包充值能力（由 container 适配到支付/钱包服务）。
+type PurchaseRechargeGateway interface {
+	CreateRecharge(ctx context.Context, input PurchaseRechargeInput) (*ShopRecharge, error)
+	GetRechargeStatus(ctx context.Context, userID uint, rechargeNo string) (*ShopRecharge, error)
 }

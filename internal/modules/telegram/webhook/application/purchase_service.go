@@ -26,6 +26,9 @@ const (
 	purchaseStepPickBin         = "pick_bin"        // 输入 BIN
 	purchaseStepConfirm         = "confirm"         // 确认下单
 	purchaseStepPickChannel     = "pick_channel"    // 选择在线支付渠道
+	purchaseStepBinStock        = "bin_stock"       // 卡头库存：输入 BIN
+	purchaseStepRechargeAmount  = "recharge_amount" // 充值：输入金额
+	purchaseStepRechargeChannel = "recharge_channel" // 充值：选择渠道
 )
 
 // 回调 data 前缀。
@@ -45,6 +48,14 @@ const (
 	cbPayBalance     = "shop:pay:balance"
 	cbPayOnline      = "shop:pay:online"
 	cbPayChannel     = "shop:pay:ch:"
+	cbBinStock       = "shop:binstock"
+	cbWallet         = "shop:wallet"
+	cbOrders         = "shop:orders"
+	cbOrderPrefix    = "shop:order:"
+	cbLang           = "shop:lang"
+	cbRecharge       = "shop:recharge"
+	cbRechargeCh     = "shop:recharge:ch:"
+	cbRechargeCheck  = "shop:recharge:check:"
 	cbBackCat        = "shop:back:cat"
 	cbBackProd       = "shop:back:prod"
 	cbBackDetail     = "shop:back:detail"
@@ -79,7 +90,9 @@ type purchaseSession struct {
 	pickStock    *contract.ShopPickStock
 	// 测活
 	cardCheck     bool
-	lastUpdatedAt time.Time
+	// 充值临时金额
+	rechargeAmount string
+	lastUpdatedAt  time.Time
 }
 
 // purchaseView 会话的不可变快照，供渲染/键盘/下单使用（避免锁外读写会话）。
@@ -102,6 +115,8 @@ type purchaseView struct {
 	pickBin      string
 	pickStock    *contract.ShopPickStock
 	cardCheck     bool
+	// 充值临时金额
+	rechargeAmount string
 }
 
 func (s *purchaseService) snapshot(chatID int64) *purchaseView {
@@ -136,6 +151,7 @@ func (s *purchaseService) snapshot(chatID int64) *purchaseView {
 		pickBin:      sess.pickBin,
 		pickStock:    sess.pickStock,
 		cardCheck:     sess.cardCheck,
+		rechargeAmount: sess.rechargeAmount,
 	}
 }
 
@@ -191,10 +207,22 @@ func (s *purchaseService) handleMessage(ctx context.Context, token string, msg *
 	if text == "/shop" || strings.HasPrefix(text, "/shop ") {
 		return true, s.enterShop(ctx, token, chatID, msg)
 	}
+	// 充值：/recharge
+	if text == "/recharge" || strings.HasPrefix(text, "/recharge ") {
+		return true, s.enterRecharge(ctx, token, chatID, msg.From)
+	}
 
 	view := s.snapshot(chatID)
 	if view == nil {
 		return false, nil
+	}
+	// 卡头库存：输入 6 位 BIN
+	if view.step == purchaseStepBinStock {
+		return true, s.handleBinStockInput(ctx, token, view, text)
+	}
+	// 充值：输入金额
+	if view.step == purchaseStepRechargeAmount {
+		return true, s.handleRechargeAmount(ctx, token, view, text, msg.From)
 	}
 	// 配置面板中的文本输入：BIN 或国家双字母
 	if view.step == purchaseStepConfigure || view.step == purchaseStepPickBin ||
@@ -257,6 +285,22 @@ func (s *purchaseService) handleCallback(ctx context.Context, token string, cb *
 		return true, s.payOnline(ctx, token, chatID)
 	case strings.HasPrefix(data, cbPayChannel):
 		return true, s.selectPayChannel(ctx, token, chatID, strings.TrimPrefix(data, cbPayChannel))
+	case data == cbBinStock:
+		return true, s.enterBinStock(ctx, token, chatID)
+	case data == cbWallet:
+		return true, s.ShowWallet(ctx, token, chatID, cb.From)
+	case data == cbOrders:
+		return true, s.renderOrders(ctx, token, chatID, 1, cb.From)
+	case strings.HasPrefix(data, cbOrderPrefix):
+		return true, s.showOrderDetail(ctx, token, chatID, strings.TrimPrefix(data, cbOrderPrefix), cb.From)
+	case data == cbLang:
+		return true, s.toggleLanguage(ctx, token, chatID, cb.From)
+	case data == cbRecharge:
+		return true, s.enterRecharge(ctx, token, chatID, &cb.From)
+	case strings.HasPrefix(data, cbRechargeCh):
+		return true, s.createRechargeWithChannel(ctx, token, chatID, strings.TrimPrefix(data, cbRechargeCh), cb.From)
+	case strings.HasPrefix(data, cbRechargeCheck):
+		return true, s.checkRecharge(ctx, token, chatID, strings.TrimPrefix(data, cbRechargeCheck), cb.From)
 	}
 	return true, nil
 }
@@ -298,8 +342,14 @@ func (s *purchaseService) ShowWallet(ctx context.Context, token string, chatID i
 	}
 	msg := localizedText(purchaseTexts["purchase.wallet_title"], loc) + "\n\n" +
 		localizedText(purchaseTexts["purchase.wallet_balance"], loc) + " " + formatAmount(balance, currency)
+	markup := inlineKeyboard{InlineKeyboard: [][]inlineButton{
+		{
+			{Text: localizedText(purchaseTexts["purchase.wallet_recharge_btn"], loc), CallbackData: cbRecharge},
+			{Text: localizedText(purchaseTexts["purchase.orders_title"], loc), CallbackData: cbOrders},
+		},
+	}}
 	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
-		contract.SendMessageOptions{DisableWebPagePreview: true})
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: markup})
 }
 
 // enterShopForUser 进入购买流程：解析/创建商城账号并展示分类。
@@ -322,6 +372,9 @@ func (s *purchaseService) enterShopForUser(ctx context.Context, token string, ch
 	}
 
 	locale := s.locale()
+	if user.Locale != "" {
+		locale = resolveLocale(user.Locale)
+	}
 	currency := ""
 	if s.ports.Settings != nil {
 		if cur, e := s.ports.Settings.GetCurrency(ctx); e == nil && cur != "" {
@@ -1581,4 +1634,403 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.wallet_balance":     {"zh-CN": "当前余额", "zh-TW": "目前餘額", "en-US": "Current balance"},
 	"purchase.no_channel":         {"zh-CN": "暂无可用的在线支付渠道，请稍后再试或联系客服。", "zh-TW": "暫無可用的線上支付管道，請稍後再試或聯絡客服。", "en-US": "No online payment channel available right now."},
 	"purchase.select_channel_title": {"zh-CN": "请选择支付渠道：", "zh-TW": "請選擇支付管道：", "en-US": "Choose a payment channel:"},
+	"purchase.binstock_title":     {"zh-CN": "📦 卡头库存", "zh-TW": "📦 卡頭庫存", "en-US": "📦 BIN Stock"},
+	"purchase.binstock_prompt":    {"zh-CN": "请输入 6 位卡头(BIN) 查询各商品的可用库存：", "zh-TW": "請輸入 6 位卡頭(BIN) 查詢各商品的可用庫存：", "en-US": "Enter a 6-digit BIN to check available stock:"},
+	"purchase.binstock_bin":       {"zh-CN": "卡头", "zh-TW": "卡頭", "en-US": "BIN"},
+	"purchase.binstock_none":      {"zh-CN": "未找到该卡头的可用卡密。", "zh-TW": "未找到該卡頭的可用卡密。", "en-US": "No available cards for this BIN."},
+	"purchase.binstock_total":     {"zh-CN": "合计可发", "zh-TW": "合計可發", "en-US": "Total available"},
+	"purchase.orders_title":       {"zh-CN": "📦 我的订单", "zh-TW": "📦 我的訂單", "en-US": "📦 My Orders"},
+	"purchase.orders_empty":       {"zh-CN": "暂无订单。", "zh-TW": "暫無訂單。", "en-US": "No orders yet."},
+	"purchase.order_detail_title": {"zh-CN": "📋 订单详情", "zh-TW": "📋 訂單詳情", "en-US": "📋 Order Detail"},
+	"purchase.order_status":       {"zh-CN": "状态", "zh-TW": "狀態", "en-US": "Status"},
+	"purchase.order_time":         {"zh-CN": "下单时间", "zh-TW": "下單時間", "en-US": "Placed at"},
+	"purchase.order_cards":        {"zh-CN": "卡密", "zh-TW": "卡密", "en-US": "Cards"},
+	"purchase.order_no_cards":     {"zh-CN": "（暂无卡密，发货后自动显示，并会推送到本对话）", "zh-TW": "（暫無卡密，發貨後自動顯示，並會推送到本對話）", "en-US": "(No cards yet — they will appear here and be pushed here once fulfilled.)"},
+	"purchase.orders_back":        {"zh-CN": "⬅️ 返回订单列表", "zh-TW": "⬅️ 返回訂單列表", "en-US": "⬅️ Back to orders"},
+	"purchase.lang_switched":      {"zh-CN": "🌐 语言已切换为中文。", "zh-TW": "🌐 語言已切換為中文。", "en-US": "🌐 Language switched to English."},
+	"purchase.recharge_title":     {"zh-CN": "💳 充值", "zh-TW": "💳 儲值", "en-US": "💳 Recharge"},
+	"purchase.recharge_amount_prompt": {"zh-CN": "请输入充值金额（如 100 或 50.5）：", "zh-TW": "請輸入儲值金額（如 100 或 50.5）：", "en-US": "Enter recharge amount (e.g. 100 or 50.5):"},
+	"purchase.recharge_amount_invalid": {"zh-CN": "金额无效，请输入大于 0 的数字。", "zh-TW": "金額無效，請輸入大於 0 的數字。", "en-US": "Invalid amount, enter a number greater than 0."},
+	"purchase.recharge_payable":   {"zh-CN": "应付", "zh-TW": "應付", "en-US": "Payable"},
+	"purchase.recharge_status":    {"zh-CN": "充值状态", "zh-TW": "儲值狀態", "en-US": "Recharge status"},
+	"purchase.recharge_check":     {"zh-CN": "🔄 查看到账状态", "zh-TW": "🔄 查看入帳狀態", "en-US": "🔄 Check status"},
+	"purchase.recharge_created":   {"zh-CN": "充值订单已创建，请完成支付（支付后自动到账）：", "zh-TW": "儲值訂單已建立，請完成支付（支付後自動入帳）：", "en-US": "Recharge order created, complete the payment (auto-credited):"},
+	"purchase.recharge_pending":   {"zh-CN": "待支付", "zh-TW": "待支付", "en-US": "Pending"},
+	"purchase.recharge_paid":      {"zh-CN": "已到账 ✅", "zh-TW": "已入帳 ✅", "en-US": "Credited ✅"},
+	"purchase.recharge_failed":    {"zh-CN": "失败/已过期", "zh-TW": "失敗/已過期", "en-US": "Failed/Expired"},
+	"purchase.wallet_recharge_btn": {"zh-CN": "💳 充值", "zh-TW": "💳 儲值", "en-US": "💳 Recharge"},
+	"order.status.pending_payment":     {"zh-CN": "待支付", "zh-TW": "待支付", "en-US": "Pending payment"},
+	"order.status.paid":                {"zh-CN": "已支付", "zh-TW": "已支付", "en-US": "Paid"},
+	"order.status.fulfilling":          {"zh-CN": "发货中", "zh-TW": "發貨中", "en-US": "Fulfilling"},
+	"order.status.partially_delivered": {"zh-CN": "部分发货", "zh-TW": "部分發貨", "en-US": "Partially delivered"},
+	"order.status.partially_refunded":  {"zh-CN": "部分退款", "zh-TW": "部分退款", "en-US": "Partially refunded"},
+	"order.status.delivered":           {"zh-CN": "已发货", "zh-TW": "已發貨", "en-US": "Delivered"},
+	"order.status.completed":           {"zh-CN": "已完成", "zh-TW": "已完成", "en-US": "Completed"},
+	"order.status.canceled":            {"zh-CN": "已取消", "zh-TW": "已取消", "en-US": "Canceled"},
+	"order.status.refunded":            {"zh-CN": "已退款", "zh-TW": "已退款", "en-US": "Refunded"},
+	"order.status.expired":             {"zh-CN": "已过期", "zh-TW": "已過期", "en-US": "Expired"},
+}
+
+// --- 个人功能：卡头库存 / 我的订单 / 语言 / 充值 ---
+
+// resolveUser 通过回调/消息的 Telegram 身份解析（或创建）商城账号。
+func (s *purchaseService) resolveUser(ctx context.Context, from webhookdomain.User) (*contract.PurchaseUser, error) {
+	if s.ports.Identity == nil {
+		return nil, fmt.Errorf("identity unavailable")
+	}
+	return s.ports.Identity.ResolveOrProvision(ctx,
+		fmt.Sprintf("%d", from.ID), from.UserName, from.FirstName, from.LastName)
+}
+
+// enterBinStock 进入卡头库存查询：提示输入 BIN。
+func (s *purchaseService) enterBinStock(ctx context.Context, token string, chatID int64) error {
+	loc := s.locale()
+	s.mu.Lock()
+	if sess, ok := s.sessions[chatID]; ok {
+		loc = sess.locale
+		sess.step = purchaseStepBinStock
+	} else {
+		s.sessions[chatID] = &purchaseSession{chatID: chatID, locale: loc, step: purchaseStepBinStock, lastUpdatedAt: time.Now()}
+	}
+	s.mu.Unlock()
+	msg := localizedText(purchaseTexts["purchase.binstock_title"], loc) + "\n\n" + localizedText(purchaseTexts["purchase.binstock_prompt"], loc)
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
+		contract.SendMessageOptions{DisableWebPagePreview: true})
+}
+
+// handleBinStockInput 处理卡头库存的 BIN 输入：遍历 bot 可见商品查可用库存并汇总。
+func (s *purchaseService) handleBinStockInput(ctx context.Context, token string, view *purchaseView, text string) error {
+	loc := view.locale
+	bin := strings.TrimSpace(text)
+	if !isBinInput(bin) {
+		return s.sendError(ctx, token, view.chatID, nil, "purchase.binstock_prompt")
+	}
+	if s.ports.Catalog == nil {
+		return s.sendError(ctx, token, view.chatID, nil, "purchase.error")
+	}
+	var sb strings.Builder
+	sb.WriteString(localizedText(purchaseTexts["purchase.binstock_title"], loc) + " · " + bin + "\n\n")
+	var total int64
+	products, _, err := s.ports.Catalog.ListProducts(ctx, "", 1, 200)
+	if err == nil {
+		for _, p := range products {
+			if !p.PickEnabled {
+				continue
+			}
+			count, err := s.ports.Catalog.CountAvailableByBinPrefix(ctx, p.ID, bin)
+			if err != nil || count <= 0 {
+				continue
+			}
+			sb.WriteString("• " + p.Title + "：" + fmt.Sprintf("%d", count) + "\n")
+			total += count
+		}
+	}
+	if total == 0 {
+		return s.sendError(ctx, token, view.chatID, nil, "purchase.binstock_none")
+	}
+	sb.WriteString("\n" + localizedText(purchaseTexts["purchase.binstock_total"], loc) + "：" + fmt.Sprintf("%d", total))
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", view.chatID), sb.String(),
+		contract.SendMessageOptions{DisableWebPagePreview: true})
+}
+
+// renderOrders 返回用户订单列表（bot「我的订单」）。
+func (s *purchaseService) renderOrders(ctx context.Context, token string, chatID int64, page int, from webhookdomain.User) error {
+	if s.ports.OrderReader == nil {
+		return s.sendError(ctx, token, chatID, nil, "purchase.unavailable")
+	}
+	user, err := s.resolveUser(ctx, from)
+	if err != nil || user == nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.identity_failed")
+	}
+	loc := s.locale()
+	if user.Locale != "" {
+		loc = resolveLocale(user.Locale)
+	}
+	const pageSize = 10
+	orders, total, err := s.ports.OrderReader.ListOrders(ctx, user.ID, 1, pageSize)
+	if err != nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.error")
+	}
+	var sb strings.Builder
+	sb.WriteString(localizedText(purchaseTexts["purchase.orders_title"], loc))
+	if total > 0 {
+		sb.WriteString(fmt.Sprintf("（%d）", total))
+	}
+	sb.WriteString("\n\n")
+	if len(orders) == 0 {
+		sb.WriteString(localizedText(purchaseTexts["purchase.orders_empty"], loc))
+	}
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.orderListKeyboard(orders, loc)})
+}
+
+// orderListKeyboard 订单列表键盘（仅列出前若干条订单，无分页）。
+func (s *purchaseService) orderListKeyboard(orders []contract.ShopOrder, loc string) inlineKeyboard {
+	var rows [][]inlineButton
+	for _, o := range orders {
+		label := o.Title + "  " + formatAmount(o.TotalAmount, o.Currency) + " [" + orderStatusText(o.Status, loc) + "]"
+		rows = append(rows, []inlineButton{{Text: label, CallbackData: cbOrderPrefix + o.OrderNo}})
+	}
+	return inlineKeyboard{InlineKeyboard: rows}
+}
+
+// showOrderDetail 展示订单详情（含已发货卡密 payload）。
+func (s *purchaseService) showOrderDetail(ctx context.Context, token string, chatID int64, orderNo string, from webhookdomain.User) error {
+	if s.ports.OrderReader == nil {
+		return s.sendError(ctx, token, chatID, nil, "purchase.unavailable")
+	}
+	user, err := s.resolveUser(ctx, from)
+	if err != nil || user == nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.identity_failed")
+	}
+	loc := s.locale()
+	if user.Locale != "" {
+		loc = resolveLocale(user.Locale)
+	}
+	detail, err := s.ports.OrderReader.GetOrderByOrderNo(ctx, user.ID, orderNo)
+	if err != nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.error")
+	}
+	var sb strings.Builder
+	sb.WriteString(localizedText(purchaseTexts["purchase.order_detail_title"], loc) + "\n\n")
+	sb.WriteString("🆔 " + detail.OrderNo + "\n")
+	sb.WriteString(localizedText(purchaseTexts["purchase.order_status"], loc) + "：" + orderStatusText(detail.Status, loc) + "\n")
+	sb.WriteString(localizedText(purchaseTexts["purchase.order_time"], loc) + "：" + detail.CreatedAt + "\n")
+	sb.WriteString(localizedText(purchaseTexts["purchase.total"], loc) + " " + formatAmount(detail.TotalAmount, detail.Currency) + "\n")
+	for _, it := range detail.Items {
+		sb.WriteString("• " + it.Title + " ×" + fmt.Sprintf("%d", it.Quantity) + "\n")
+	}
+	if detail.Fulfillment != nil && strings.TrimSpace(detail.Fulfillment.Payload) != "" {
+		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.order_cards"], loc) + "：\n")
+		sb.WriteString(truncatePayload(detail.Fulfillment.Payload))
+	} else {
+		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.order_no_cards"], loc))
+	}
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: inlineKeyboard{InlineKeyboard: [][]inlineButton{
+			{{Text: localizedText(purchaseTexts["purchase.orders_back"], loc), CallbackData: cbOrders}},
+		}}})
+}
+
+// orderStatusText 订单状态本地化。
+func orderStatusText(status, loc string) string {
+	key := "order.status." + status
+	if txt, ok := purchaseTexts[key]; ok {
+		if v := localizedText(txt, loc); v != "" {
+			return v
+		}
+	}
+	return status
+}
+
+// truncatePayload 截断卡密 payload 到安全长度，避免超 Telegram 单条消息限制。
+func truncatePayload(payload string) string {
+	const maxLen = 3000
+	if len(payload) <= maxLen {
+		return payload
+	}
+	return payload[:maxLen] + "\n…（已截断）"
+}
+
+// toggleLanguage 在中/英之间切换，并持久化到商城账号。
+func (s *purchaseService) toggleLanguage(ctx context.Context, token string, chatID int64, from webhookdomain.User) error {
+	if s.ports.Identity == nil {
+		return s.sendError(ctx, token, chatID, nil, "purchase.unavailable")
+	}
+	user, err := s.resolveUser(ctx, from)
+	if err != nil || user == nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.identity_failed")
+	}
+	current := user.Locale
+	if current == "" {
+		current = s.locale()
+	}
+	newLocale := "zh-CN"
+	if strings.HasPrefix(resolveLocale(current), "en") {
+		newLocale = "zh-CN"
+	} else {
+		newLocale = "en-US"
+	}
+	if err := s.ports.Identity.SetLocale(ctx, user.ID, newLocale); err != nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.error")
+	}
+	// 若存在购买会话，同步刷新会话语言。
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.locale = newLocale
+	}
+	s.mu.Unlock()
+	msg := localizedText(purchaseTexts["purchase.lang_switched"], newLocale)
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
+		contract.SendMessageOptions{DisableWebPagePreview: true})
+}
+
+// enterRecharge 进入充值：解析用户 + 提示输入金额。
+func (s *purchaseService) enterRecharge(ctx context.Context, token string, chatID int64, from *webhookdomain.User) error {
+	if s.ports.Recharge == nil {
+		return s.sendError(ctx, token, chatID, nil, "purchase.unavailable")
+	}
+	if from == nil {
+		return s.sendError(ctx, token, chatID, nil, "purchase.identity_failed")
+	}
+	user, err := s.resolveUser(ctx, *from)
+	if err != nil || user == nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.identity_failed")
+	}
+	loc := s.locale()
+	if user.Locale != "" {
+		loc = resolveLocale(user.Locale)
+	}
+	s.mu.Lock()
+	if sess, ok := s.sessions[chatID]; ok {
+		sess.userID = user.ID
+		sess.locale = loc
+		sess.step = purchaseStepRechargeAmount
+	} else {
+		s.sessions[chatID] = &purchaseSession{chatID: chatID, userID: user.ID, locale: loc, step: purchaseStepRechargeAmount, lastUpdatedAt: time.Now()}
+	}
+	s.mu.Unlock()
+	msg := localizedText(purchaseTexts["purchase.recharge_title"], loc) + "\n\n" + localizedText(purchaseTexts["purchase.recharge_amount_prompt"], loc)
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
+		contract.SendMessageOptions{DisableWebPagePreview: true})
+}
+
+// handleRechargeAmount 处理充值金额输入：校验后查渠道并发起。
+func (s *purchaseService) handleRechargeAmount(ctx context.Context, token string, view *purchaseView, text string, from *webhookdomain.User) error {
+	loc := view.locale
+	if from == nil {
+		return s.sendError(ctx, token, view.chatID, nil, "purchase.identity_failed")
+	}
+	amount := strings.TrimSpace(text)
+	dec, err := decimal.NewFromString(amount)
+	if err != nil || dec.LessThanOrEqual(decimal.Zero) {
+		return s.sendError(ctx, token, view.chatID, nil, "purchase.recharge_amount_invalid")
+	}
+	channels, err := s.ports.Payments.ListPaymentChannels(ctx)
+	if err != nil {
+		return s.sendError(ctx, token, view.chatID, err, "purchase.error")
+	}
+	if len(channels) == 0 {
+		return s.sendError(ctx, token, view.chatID, nil, "purchase.no_channel")
+	}
+	// 保存金额到会话。
+	s.mu.Lock()
+	if sess := s.sessions[view.chatID]; sess != nil {
+		sess.rechargeAmount = amount
+	}
+	s.mu.Unlock()
+	if len(channels) == 1 {
+		return s.createRechargeWithChannel(ctx, token, view.chatID, fmt.Sprintf("%d", channels[0].ID), *from)
+	}
+	// 多渠道：展示渠道选择。
+	s.mu.Lock()
+	if sess := s.sessions[view.chatID]; sess != nil {
+		sess.step = purchaseStepRechargeChannel
+	}
+	s.mu.Unlock()
+	msg := localizedText(purchaseTexts["purchase.select_channel_title"], loc)
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", view.chatID), msg,
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.rechargeChannelKeyboard(channels, loc)})
+}
+
+// rechargeChannelKeyboard 充值渠道选择键盘。
+func (s *purchaseService) rechargeChannelKeyboard(channels []contract.ShopPaymentChannel, loc string) inlineKeyboard {
+	var rows [][]inlineButton
+	for _, ch := range channels {
+		rows = append(rows, []inlineButton{{Text: ch.Name, CallbackData: cbRechargeCh + fmt.Sprintf("%d", ch.ID)}})
+	}
+	rows = append(rows, []inlineButton{{Text: "🔙 " + localizedText(purchaseTexts["purchase.back"], loc), CallbackData: cbCancel}})
+	return inlineKeyboard{InlineKeyboard: rows}
+}
+
+// createRechargeWithChannel 选定渠道后创建充值订单并展示支付链接。
+func (s *purchaseService) createRechargeWithChannel(ctx context.Context, token string, chatID int64, channelIDStr string, from webhookdomain.User) error {
+	if s.ports.Recharge == nil {
+		return s.sendError(ctx, token, chatID, nil, "purchase.unavailable")
+	}
+	channelID, err := strconv.ParseUint(channelIDStr, 10, 64)
+	if err != nil || channelID == 0 {
+		return s.sendError(ctx, token, chatID, err, "purchase.error")
+	}
+	user, err := s.resolveUser(ctx, from)
+	if err != nil || user == nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.identity_failed")
+	}
+	loc := s.locale()
+	if user.Locale != "" {
+		loc = resolveLocale(user.Locale)
+	}
+	// 从会话取金额（多渠道流程时已存）。
+	amount := ""
+	if view := s.snapshot(chatID); view != nil {
+		amount = view.rechargeAmount
+	}
+	if amount == "" {
+		return s.sendError(ctx, token, chatID, nil, "purchase.recharge_amount_invalid")
+	}
+	currency := ""
+	if s.ports.Settings != nil {
+		if cur, e := s.ports.Settings.GetCurrency(ctx); e == nil {
+			currency = cur
+		}
+	}
+	recharge, err := s.ports.Recharge.CreateRecharge(ctx, contract.PurchaseRechargeInput{
+		UserID:    user.ID,
+		ChannelID: uint(channelID),
+		Amount:    amount,
+		Currency:  currency,
+	})
+	if err != nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.error")
+	}
+	var sb strings.Builder
+	sb.WriteString(localizedText(purchaseTexts["purchase.recharge_created"], loc) + "\n\n")
+	sb.WriteString("🆔 " + recharge.RechargeNo + "\n")
+	sb.WriteString(localizedText(purchaseTexts["purchase.recharge_payable"], loc) + " " + formatAmount(recharge.PayableAmount, recharge.Currency) + "\n")
+	if recharge.PayURL != "" {
+		sb.WriteString("\n🔗 " + recharge.PayURL + "\n")
+	}
+	var markup interface{}
+	if recharge.PayURL != "" {
+		markup = inlineKeyboard{InlineKeyboard: [][]inlineButton{
+			{
+				{Text: localizedText(purchaseTexts["purchase.pay_open_link"], loc), URL: recharge.PayURL},
+				{Text: localizedText(purchaseTexts["purchase.recharge_check"], loc), CallbackData: cbRechargeCheck + recharge.RechargeNo},
+			},
+		}}
+	}
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: markup})
+}
+
+// checkRecharge 查询充值到账状态。
+func (s *purchaseService) checkRecharge(ctx context.Context, token string, chatID int64, rechargeNo string, from webhookdomain.User) error {
+	if s.ports.Recharge == nil {
+		return s.sendError(ctx, token, chatID, nil, "purchase.unavailable")
+	}
+	user, err := s.resolveUser(ctx, from)
+	if err != nil || user == nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.identity_failed")
+	}
+	loc := s.locale()
+	if user.Locale != "" {
+		loc = resolveLocale(user.Locale)
+	}
+	recharge, err := s.ports.Recharge.GetRechargeStatus(ctx, user.ID, rechargeNo)
+	if err != nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.error")
+	}
+	statusText := localizedText(purchaseTexts["purchase.recharge_pending"], loc)
+	switch recharge.Status {
+	case "success":
+		statusText = localizedText(purchaseTexts["purchase.recharge_paid"], loc)
+	case "failed", "expired":
+		statusText = localizedText(purchaseTexts["purchase.recharge_failed"], loc)
+	}
+	msg := localizedText(purchaseTexts["purchase.recharge_title"], loc) + "\n\n" +
+		"🆔 " + recharge.RechargeNo + "\n" +
+		localizedText(purchaseTexts["purchase.recharge_status"], loc) + "：" + statusText + "\n" +
+		localizedText(purchaseTexts["purchase.recharge_payable"], loc) + " " + formatAmount(recharge.PayableAmount, recharge.Currency)
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
+		contract.SendMessageOptions{DisableWebPagePreview: true})
 }

@@ -173,13 +173,13 @@ func (s *Service) handleMessage(ctx context.Context, token string, cfg settingsm
 			if welcome := localizedText(cfg.Welcome.Message, locale); welcome != "" {
 				return s.botapi.SendMessage(ctx, token, chatID, welcome, contract.SendMessageOptions{
 					DisableWebPagePreview: true,
-					ReplyMarkup:           s.startKeyboard(),
+					ReplyMarkup:           s.startKeyboard(locale),
 				})
 			}
 		}
 		return s.botapi.SendMessage(ctx, token, chatID, mainMenuHint(cfg, locale), contract.SendMessageOptions{
 			DisableWebPagePreview: true,
-			ReplyMarkup:           s.startKeyboard(),
+			ReplyMarkup:           s.startKeyboard(locale),
 		})
 	}
 
@@ -247,12 +247,24 @@ func (s *Service) handleCallbackQuery(ctx context.Context, token string, cfg set
 	return nil
 }
 
-// startKeyboard 欢迎语附带的快捷操作键盘（开始购物 / 主菜单）。
-func (s *Service) startKeyboard() inlineKeyboard {
+// startKeyboard 欢迎语附带的快捷操作键盘（开始购物 / 卡头库存 / 我的钱包 / 我的订单 / 语言切换 / 帮助）。
+func (s *Service) startKeyboard(locale string) inlineKeyboard {
+	langLabel := "🌐 English"
+	if strings.HasPrefix(resolveLocale(locale), "en") {
+		langLabel = "🌐 中文"
+	}
 	rows := [][]inlineButton{
 		{
 			{Text: "🛍️ 开始购物", CallbackData: "shop:start"},
-			{Text: "📋 主菜单", CallbackData: "menu"},
+			{Text: "📦 卡头库存", CallbackData: "shop:binstock"},
+		},
+		{
+			{Text: "💰 我的钱包", CallbackData: "shop:wallet"},
+			{Text: "📋 我的订单", CallbackData: "shop:orders"},
+		},
+		{
+			{Text: langLabel, CallbackData: "shop:lang"},
+			{Text: "❓ 帮助中心", CallbackData: "help"},
 		},
 	}
 	return inlineKeyboard{InlineKeyboard: rows}

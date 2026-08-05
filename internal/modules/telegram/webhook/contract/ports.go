@@ -81,4 +81,8 @@ type PurchasePorts struct {
 	Wallet   PurchaseWalletReader
 	Identity PurchaseIdentityResolver
 	Settings PurchaseSettingReader
+	// OrderReader 提供 bot 内订单列表/详情（含卡密）查询；nil 时「我的订单」禁用。
+	OrderReader PurchaseOrderReader
+	// Recharge 提供 bot 内钱包充值；nil 时充值禁用。
+	Recharge PurchaseRechargeGateway
 }
