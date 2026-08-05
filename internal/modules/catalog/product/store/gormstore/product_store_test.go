@@ -580,3 +580,96 @@ func TestProductRepositoryListFiltersWholesalePrices(t *testing.T) {
 		t.Fatalf("product without wholesale missing: %+v", rows)
 	}
 }
+
+func TestProductRepositoryListFiltersChannelVisibility(t *testing.T) {
+	repo, _ := setupProductStoreTest(t)
+
+	both := &productdomain.Product{
+		CategoryID:      1,
+		Slug:            "visible-both",
+		TitleJSON:       jsonmap.JSON{"zh-CN": "两端都展示"},
+		PriceAmount:     money.FromDecimal(decimal.NewFromInt(100)),
+		PurchaseType:    constants.ProductPurchaseMember,
+		FulfillmentType: constants.FulfillmentTypeAuto,
+		IsActive:        true,
+		BotVisible:      true,
+		WebVisible:      true,
+	}
+	botOnly := &productdomain.Product{
+		CategoryID:      1,
+		Slug:            "visible-bot-only",
+		TitleJSON:       jsonmap.JSON{"zh-CN": "仅 bot"},
+		PriceAmount:     money.FromDecimal(decimal.NewFromInt(100)),
+		PurchaseType:    constants.ProductPurchaseMember,
+		FulfillmentType: constants.FulfillmentTypeAuto,
+		IsActive:        true,
+		BotVisible:      true,
+		WebVisible:      false,
+	}
+	webOnly := &productdomain.Product{
+		CategoryID:      1,
+		Slug:            "visible-web-only",
+		TitleJSON:       jsonmap.JSON{"zh-CN": "仅网站"},
+		PriceAmount:     money.FromDecimal(decimal.NewFromInt(100)),
+		PurchaseType:    constants.ProductPurchaseMember,
+		FulfillmentType: constants.FulfillmentTypeAuto,
+		IsActive:        true,
+		BotVisible:      false,
+		WebVisible:      true,
+	}
+	for _, p := range []*productdomain.Product{both, botOnly, webOnly} {
+		if err := repo.Create(p); err != nil {
+			t.Fatalf("create product %s failed: %v", p.Slug, err)
+		}
+	}
+	// botOnly/webOnly 的某个开关为 false（零值），Create 时会被 default:true 忽略并回填为 true，
+	// 需在内存中显式重置为 false 后再 Update(Save) 写入——与真实业务「创建后编辑」一致。
+	botOnly.BotVisible, botOnly.WebVisible = true, false
+	webOnly.BotVisible, webOnly.WebVisible = false, true
+	if err := repo.Update(botOnly); err != nil {
+		t.Fatalf("update botOnly failed: %v", err)
+	}
+	if err := repo.Update(webOnly); err != nil {
+		t.Fatalf("update webOnly failed: %v", err)
+	}
+
+	slugsOf := func(rows []productdomain.Product) map[string]bool {
+		got := make(map[string]bool, len(rows))
+		for _, row := range rows {
+			got[row.Slug] = true
+		}
+		return got
+	}
+
+	webTrue, botTrue := true, true
+	webFalse, botFalse := false, false
+
+	// 网站公开列表：web_visible = true
+	rows, _, err := repo.List(productcontract.ListFilter{Page: 1, PageSize: 20, OnlyActive: true, WebVisible: &webTrue})
+	if err != nil {
+		t.Fatalf("list web products failed: %v", err)
+	}
+	got := slugsOf(rows)
+	if !got[both.Slug] || !got[webOnly.Slug] || got[botOnly.Slug] {
+		t.Fatalf("web list wrong: got %v", got)
+	}
+
+	// bot 列表：bot_visible = true（含仅 bot 商品）
+	rows, _, err = repo.List(productcontract.ListFilter{Page: 1, PageSize: 20, OnlyActive: true, BotVisible: &botTrue})
+	if err != nil {
+		t.Fatalf("list bot products failed: %v", err)
+	}
+	got = slugsOf(rows)
+	if !got[both.Slug] || !got[botOnly.Slug] || got[webOnly.Slug] {
+		t.Fatalf("bot list wrong: got %v", got)
+	}
+
+	// 双 false：两个渠道都隐藏
+	rows, _, err = repo.List(productcontract.ListFilter{Page: 1, PageSize: 20, OnlyActive: true, WebVisible: &webFalse, BotVisible: &botFalse})
+	if err != nil {
+		t.Fatalf("list hidden products failed: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("expected no fully-hidden products, got %+v", rows)
+	}
+}
