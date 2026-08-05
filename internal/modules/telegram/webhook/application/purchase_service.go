@@ -52,6 +52,7 @@ const (
 	cbWallet         = "shop:wallet"
 	cbOrders         = "shop:orders"
 	cbOrderPrefix    = "shop:order:"
+	cbOrderPagePrefix = "shop:orders:page:"
 	cbLang           = "shop:lang"
 	cbRecharge       = "shop:recharge"
 	cbRechargeCh     = "shop:recharge:ch:"
@@ -291,6 +292,12 @@ func (s *purchaseService) handleCallback(ctx context.Context, token string, cb *
 		return true, s.ShowWallet(ctx, token, chatID, cb.From)
 	case data == cbOrders:
 		return true, s.renderOrders(ctx, token, chatID, 1, cb.From)
+	case strings.HasPrefix(data, cbOrderPagePrefix):
+		page, err := strconv.Atoi(strings.TrimPrefix(data, cbOrderPagePrefix))
+		if err != nil || page < 1 {
+			return true, nil
+		}
+		return true, s.renderOrders(ctx, token, chatID, page, cb.From)
 	case strings.HasPrefix(data, cbOrderPrefix):
 		return true, s.showOrderDetail(ctx, token, chatID, strings.TrimPrefix(data, cbOrderPrefix), cb.From)
 	case data == cbLang:
@@ -1747,7 +1754,7 @@ func (s *purchaseService) renderOrders(ctx context.Context, token string, chatID
 		loc = resolveLocale(user.Locale)
 	}
 	const pageSize = 10
-	orders, total, err := s.ports.OrderReader.ListOrders(ctx, user.ID, 1, pageSize)
+	orders, total, err := s.ports.OrderReader.ListOrders(ctx, user.ID, page, pageSize)
 	if err != nil {
 		return s.sendError(ctx, token, chatID, err, "purchase.error")
 	}
@@ -1761,15 +1768,31 @@ func (s *purchaseService) renderOrders(ctx context.Context, token string, chatID
 		sb.WriteString(localizedText(purchaseTexts["purchase.orders_empty"], loc))
 	}
 	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
-		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.orderListKeyboard(orders, loc)})
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.orderListKeyboard(orders, page, int(total), pageSize, loc)})
 }
 
-// orderListKeyboard 订单列表键盘（仅列出前若干条订单，无分页）。
-func (s *purchaseService) orderListKeyboard(orders []contract.ShopOrder, loc string) inlineKeyboard {
+// orderListKeyboard 订单列表键盘（每订单一个按钮；多页时附紧凑单行分页导航）。
+func (s *purchaseService) orderListKeyboard(orders []contract.ShopOrder, page, total, pageSize int, loc string) inlineKeyboard {
 	var rows [][]inlineButton
 	for _, o := range orders {
 		label := o.Title + "  " + formatAmount(o.TotalAmount, o.Currency) + " [" + orderStatusText(o.Status, loc) + "]"
 		rows = append(rows, []inlineButton{{Text: label, CallbackData: cbOrderPrefix + o.OrderNo}})
+	}
+	totalPages := (total + pageSize - 1) / pageSize
+	if totalPages > 1 {
+		prevData, nextData := "noop", "noop"
+		if page > 1 {
+			prevData = cbOrderPagePrefix + fmt.Sprintf("%d", page-1)
+		}
+		if page < totalPages {
+			nextData = cbOrderPagePrefix + fmt.Sprintf("%d", page+1)
+		}
+		nav := []inlineButton{
+			{Text: "⬅️", CallbackData: prevData},
+			{Text: fmt.Sprintf("%d/%d", page, totalPages), CallbackData: "noop"},
+			{Text: "➡️", CallbackData: nextData},
+		}
+		rows = append(rows, nav)
 	}
 	return inlineKeyboard{InlineKeyboard: rows}
 }
