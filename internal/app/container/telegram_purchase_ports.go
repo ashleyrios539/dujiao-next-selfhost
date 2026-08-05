@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	settingsapp "github.com/dujiao-next/internal/modules/settings/application"
 	"github.com/dujiao-next/internal/modules/telegram/webhook/contract"
 	walletapp "github.com/dujiao-next/internal/modules/wallet/application"
+	walletcontract "github.com/dujiao-next/internal/modules/wallet/contract"
 	"github.com/dujiao-next/internal/shared/countries"
 )
 
@@ -77,7 +79,8 @@ func (p *telegramPurchasePorts) ListActiveCategories(_ context.Context) ([]contr
 	return out, nil
 }
 
-func (p *telegramPurchasePorts) ListProducts(_ context.Context, categoryID string, page, pageSize int) ([]contract.ShopProduct, int64, error) {
+// ListProducts 返回 bot 商品列表（bot_visible=true，可含仅 bot 商品），并填充可发库存。
+func (p *telegramPurchasePorts) ListProducts(ctx context.Context, categoryID string, page, pageSize int) ([]contract.ShopProduct, int64, error) {
 	if p.products == nil {
 		return nil, 0, nil
 	}
@@ -85,6 +88,7 @@ func (p *telegramPurchasePorts) ListProducts(_ context.Context, categoryID strin
 	if err != nil {
 		return nil, 0, err
 	}
+	_ = p.products.ApplyAutoStockCounts(products)
 	out := make([]contract.ShopProduct, 0, len(products))
 	for i := range products {
 		out = append(out, p.toShopProduct(&products[i]))
@@ -194,6 +198,14 @@ func (p *telegramPurchasePorts) toShopProduct(product *productdomain.Product) co
 			pickPrices[k] = fmt.Sprint(v)
 		}
 	}
+	// 可发库存：auto 用自动库存可用量；manual 用剩余库存（-1=无限）。
+	var stockAvailable int64
+	switch product.FulfillmentType {
+	case "auto":
+		stockAvailable = product.AutoStockAvailable
+	case "manual":
+		stockAvailable = int64(product.ManualStockTotal)
+	}
 	return contract.ShopProduct{
 		ID:               product.ID,
 		Slug:             product.Slug,
@@ -205,6 +217,7 @@ func (p *telegramPurchasePorts) toShopProduct(product *productdomain.Product) co
 		CardCheckFee:     product.CardCheckFee.String(),
 		PickEnabled:      product.PickEnabled,
 		PickPrices:       pickPrices,
+		StockAvailable:   stockAvailable,
 		SKUs:             skus,
 	}
 }
@@ -216,6 +229,21 @@ func (p *telegramPurchasePorts) currency() string {
 		}
 	}
 	return ""
+}
+
+// translateOrderError 把订单/支付模块的内部错误归类为 bot 契约层的分类哨兵，
+// 使 bot 端可以据此展示本地化文案而不泄露内部细节；无法归类时原样返回。
+func translateOrderError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, orderapp.ErrCardSecretInsufficient):
+		return contract.ErrOrderStockInsufficient
+	case errors.Is(err, walletcontract.ErrInsufficientBalance):
+		return contract.ErrOrderInsufficient
+	}
+	return err
 }
 
 // --- PurchaseOrderGateway ---
@@ -231,7 +259,7 @@ func (p *telegramPurchasePorts) Preview(ctx context.Context, input contract.Purc
 		SkipIPRiskControl: true,
 	})
 	if err != nil {
-		return nil, err
+		return nil, translateOrderError(err)
 	}
 	out := &contract.PurchasePreview{
 		Currency:       preview.Currency,
@@ -268,7 +296,7 @@ func (p *telegramPurchasePorts) Create(ctx context.Context, input contract.Purch
 		SkipIPRiskControl: true,
 	})
 	if err != nil {
-		return nil, err
+		return nil, translateOrderError(err)
 	}
 	return &contract.PurchaseCreated{
 		OrderID:     order.ID,
@@ -309,7 +337,7 @@ func (p *telegramPurchasePorts) CreatePayment(ctx context.Context, input contrac
 		Context:    ctx,
 	})
 	if err != nil {
-		return nil, err
+		return nil, translateOrderError(err)
 	}
 	out := &contract.PurchasePaymentResult{
 		OrderPaid:        result.OrderPaid,

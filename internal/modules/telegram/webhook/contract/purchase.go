@@ -2,6 +2,7 @@ package contract
 
 import (
 	"context"
+	"errors"
 )
 
 // --- 购买流程展示用 DTO（与业务模块解耦，由 container 适配器转换） ---
@@ -34,6 +35,7 @@ type ShopProduct struct {
 	CardCheckFee     string
 	PickEnabled      bool
 	PickPrices       map[string]string // key -> 单价字符串
+	StockAvailable   int64             // 当前可发数（auto=可用库存，manual=剩余库存；-1 表示无限）
 	SKUs             []ShopSKU
 }
 
@@ -82,6 +84,49 @@ type ShopPickStock struct {
 	CardTypes []ShopPickCardType
 }
 // --- 下单/支付输入输出 DTO ---
+
+// 下单/支付错误分类。container 适配层负责把业务模块错误翻译成这些哨兵，
+// bot 端据此显示本地化文案，避免把 Go 内部错误原文展示给用户。
+var (
+	ErrOrderStockInsufficient = errors.New("purchase: stock insufficient")
+	ErrOrderIdentityRequired  = errors.New("purchase: identity required")
+	ErrOrderInsufficient      = errors.New("purchase: insufficient")
+	ErrPaymentCreateFailed    = errors.New("purchase: payment create failed")
+	ErrOrderCreateFailed      = errors.New("purchase: order create failed")
+)
+
+// TranslatePurchaseError 把一次下单/支付调用返回的错误归类为可展示的分类错误。
+// 归类失败时返回原错误（调用方回退到通用文案且不外泄内部细节）。
+func TranslatePurchaseError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ErrOrderStockInsufficient) ||
+		errors.Is(err, ErrOrderIdentityRequired) ||
+		errors.Is(err, ErrOrderInsufficient) ||
+		errors.Is(err, ErrPaymentCreateFailed) ||
+		errors.Is(err, ErrOrderCreateFailed) {
+		return err
+	}
+	return err
+}
+
+// ClassifyPurchaseError 判断错误属于哪一分类，用于本地化文案选择。
+func ClassifyPurchaseError(err error) string {
+	switch {
+	case errors.Is(err, ErrOrderStockInsufficient):
+		return "purchase.stock_insufficient"
+	case errors.Is(err, ErrOrderIdentityRequired):
+		return "purchase.identity_required"
+	case errors.Is(err, ErrOrderInsufficient):
+		return "purchase.insufficient"
+	case errors.Is(err, ErrPaymentCreateFailed):
+		return "purchase.payment_failed"
+	case errors.Is(err, ErrOrderCreateFailed):
+		return "purchase.order_failed"
+	}
+	return ""
+}
 
 // PurchaseItem 单个订单项（含挑头/测活）。
 type PurchaseItem struct {

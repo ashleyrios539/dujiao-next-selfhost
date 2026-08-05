@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/dujiao-next/internal/modules/telegram/webhook/contract"
 	webhookdomain "github.com/dujiao-next/internal/modules/telegram/webhook/domain"
@@ -352,4 +353,95 @@ func containsStr(haystack, needle string) bool {
 		}
 	}
 	return false
+}
+
+func TestPurchaseServiceGroupShopNotSupported(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog:  &stubCatalog{},
+		Orders:   &stubOrders{},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+	}, bot, func() string { return "zh-CN" })
+
+	handled, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		Message: &webhookdomain.Message{
+			Chat: webhookdomain.Chat{ID: 100, Type: "supergroup"},
+			From: &webhookdomain.User{ID: 200, UserName: "alice"},
+			Text: "/shop",
+		},
+	})
+	if err != nil {
+		t.Fatalf("handle err: %v", err)
+	}
+	if !handled {
+		t.Fatalf("expected handled")
+	}
+	if len(bot.sent) == 0 || !containsStr(bot.sent[0], "私聊") {
+		t.Fatalf("expected private-chat hint, got: %v", bot.sent)
+	}
+}
+
+func TestPurchaseServiceStartFromMenu(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog: &stubCatalog{
+			cats: []contract.ShopCategory{{ID: 1, Name: "卡密"}},
+		},
+		Orders:   &stubOrders{},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+	}, bot, func() string { return "zh-CN" })
+
+	if err := svc.StartFromMenu(context.Background(), "tok", 100, webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("StartFromMenu err: %v", err)
+	}
+	if len(bot.sent) == 0 || !containsStr(bot.sent[0], "请选择分类") {
+		t.Fatalf("expected category prompt, got: %v", bot.sent)
+	}
+}
+
+func TestPurchaseServiceShowWallet(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog:  &stubCatalog{},
+		Orders:   &stubOrders{},
+		Wallet:   &stubWallet{bal: "88.50"},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+		Settings: &stubSettings{cur: "CNY"},
+	}, bot, func() string { return "zh-CN" })
+
+	if err := svc.ShowWallet(context.Background(), "tok", 100, webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("ShowWallet err: %v", err)
+	}
+	if len(bot.sent) == 0 || !containsStr(bot.sent[0], "88.50") {
+		t.Fatalf("expected balance 88.50, got: %v", bot.sent)
+	}
+}
+
+func TestPurchaseServiceSessionExpires(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog: &stubCatalog{
+			cats: []contract.ShopCategory{{ID: 1, Name: "卡密"}},
+		},
+		Orders:   &stubOrders{},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+	}, bot, func() string { return "zh-CN" })
+
+	if err := svc.StartFromMenu(context.Background(), "tok", 100, webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("StartFromMenu err: %v", err)
+	}
+	if svc.snapshot(100) == nil {
+		t.Fatalf("expected active session")
+	}
+
+	// 人为把会话时间拨到 TTL 之前，验证 snapshot 自动清理。
+	svc.mu.Lock()
+	if sess := svc.sessions[100]; sess != nil {
+		sess.lastUpdatedAt = sess.lastUpdatedAt.Add(-(purchaseSessionTTL + time.Minute))
+	}
+	svc.mu.Unlock()
+
+	if svc.snapshot(100) != nil {
+		t.Fatalf("expected expired session to be cleaned up")
+	}
 }

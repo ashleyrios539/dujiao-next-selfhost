@@ -3,6 +3,7 @@
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	settingsmessaging "github.com/dujiao-next/internal/modules/settings/schema/messaging"
@@ -170,10 +171,16 @@ func (s *Service) handleMessage(ctx context.Context, token string, cfg settingsm
 	if text == "/start" || strings.HasPrefix(text, "/start ") {
 		if cfg.Welcome.Enabled {
 			if welcome := localizedText(cfg.Welcome.Message, locale); welcome != "" {
-				return s.botapi.SendMessage(ctx, token, chatID, welcome, contract.SendMessageOptions{DisableWebPagePreview: true})
+				return s.botapi.SendMessage(ctx, token, chatID, welcome, contract.SendMessageOptions{
+					DisableWebPagePreview: true,
+					ReplyMarkup:           s.startKeyboard(),
+				})
 			}
 		}
-		return s.botapi.SendMessage(ctx, token, chatID, mainMenuHint(cfg, locale), contract.SendMessageOptions{DisableWebPagePreview: true})
+		return s.botapi.SendMessage(ctx, token, chatID, mainMenuHint(cfg, locale), contract.SendMessageOptions{
+			DisableWebPagePreview: true,
+			ReplyMarkup:           s.startKeyboard(),
+		})
 	}
 
 	// /help 命令：发送帮助中心
@@ -221,12 +228,34 @@ func (s *Service) handleCallbackQuery(ctx context.Context, token string, cfg set
 		return s.sendInlineMenu(ctx, token, chatID, cfg, locale)
 	default:
 		if action := resolveMenuAction(cfg, data); action != "" {
-			// 内置动作跳转商城/钱包等，回复提示文本
+			// 内置菜单项：已接入 bot 内能力（开始购物 / 我的钱包）的直接调用。
+			if action == "builtin" && s.purchase != nil {
+				if chatID64, err := strconv.ParseInt(chatID, 10, 64); err == nil {
+					switch data {
+					case "shop_home":
+						return s.purchase.StartFromMenu(ctx, token, chatID64, cb.From)
+					case "my_wallet":
+						return s.purchase.ShowWallet(ctx, token, chatID64, cb.From)
+					}
+				}
+			}
+			// 其余内置动作：回复提示文本（去网页端查看等）。
 			hint := mainMenuHint(cfg, locale)
 			return s.botapi.SendMessage(ctx, token, chatID, hint, contract.SendMessageOptions{DisableWebPagePreview: true})
 		}
 	}
 	return nil
+}
+
+// startKeyboard 欢迎语附带的快捷操作键盘（开始购物 / 主菜单）。
+func (s *Service) startKeyboard() inlineKeyboard {
+	rows := [][]inlineButton{
+		{
+			{Text: "🛍️ 开始购物", CallbackData: "shop:start"},
+			{Text: "📋 主菜单", CallbackData: "menu"},
+		},
+	}
+	return inlineKeyboard{InlineKeyboard: rows}
 }
 
 func (s *Service) sendHelpCenter(ctx context.Context, token, chatID string, cfg settingsmessaging.TelegramBotConfigSetting, locale string) error {

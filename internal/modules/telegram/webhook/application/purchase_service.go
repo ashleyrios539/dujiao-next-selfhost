@@ -30,6 +30,7 @@ const (
 // 回调 data 前缀。
 const (
 	cbShopPrefix     = "shop:"
+	cbShopStart      = "shop:start"
 	cbCatPrefix      = "shop:cat:"
 	cbProdPrefix     = "shop:prod:"
 	cbSkuPrefix      = "shop:sku:"
@@ -50,6 +51,9 @@ const (
 	cbCancel         = "shop:cancel"
 	cbHelpBuy        = "shop:help"
 )
+
+// purchaseSessionTTL 购买会话空闲过期时间：超过该时长无交互则自动清理，避免会话无限驻留内存。
+const purchaseSessionTTL = 30 * time.Minute
 
 // purchaseSession 单个 chat 的购买会话状态（仅在 mu 持有下读写）。
 type purchaseSession struct {
@@ -105,6 +109,12 @@ func (s *purchaseService) snapshot(chatID int64) *purchaseView {
 	if !ok {
 		return nil
 	}
+	// 空闲过期：超过 TTL 无交互则清理会话，视为无会话。
+	if time.Since(sess.lastUpdatedAt) > purchaseSessionTTL {
+		delete(s.sessions, chatID)
+		return nil
+	}
+	sess.lastUpdatedAt = time.Now()
 	return &purchaseView{
 		chatID:        sess.chatID,
 		userID:        sess.userID,
@@ -149,6 +159,19 @@ func newPurchaseService(ports contract.PurchasePorts, botapi contract.BotAPIClie
 
 // handle 处理进入购买的命令或回调；返回 true 表示已消费该交互。
 func (s *purchaseService) handle(ctx context.Context, token string, update webhookdomain.Update) (bool, error) {
+	// 群组内发 /shop：提示私聊使用（购买流程仅私聊可用）。
+	if update.Message != nil && update.Message.IsGroupChat() {
+		text := strings.TrimSpace(update.Message.Text)
+		if text == "/shop" || strings.HasPrefix(text, "/shop ") {
+			chatID := update.Message.Chat.ID
+			loc := s.locale()
+			_ = s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID),
+				localizedText(purchaseTexts["purchase.group_not_supported"], loc),
+				contract.SendMessageOptions{DisableWebPagePreview: true})
+			return true, nil
+		}
+		return false, nil
+	}
 	if update.Message != nil && update.Message.IsPrivateChat() {
 		return s.handleMessage(ctx, token, update.Message)
 	}
@@ -194,6 +217,8 @@ func (s *purchaseService) handleCallback(ctx context.Context, token string, cb *
 		return true, s.cancel(ctx, token, chatID)
 	case data == cbHelpBuy:
 		return true, s.sendHelp(ctx, token, chatID)
+	case data == cbShopStart:
+		return true, s.StartFromMenu(ctx, token, chatID, cb.From)
 	case strings.HasPrefix(data, cbCatPrefix):
 		return true, s.selectCategory(ctx, token, chatID, strings.TrimPrefix(data, cbCatPrefix))
 	case strings.HasPrefix(data, cbProdPrefix):
@@ -232,17 +257,58 @@ func (s *purchaseService) handleCallback(ctx context.Context, token string, cb *
 	return true, nil
 }
 
-// enterShop 进入购买流程：解析身份 + 展示分类。
+// enterShop 进入购买流程：解析身份 + 展示分类（文本 /shop 入口）。
 func (s *purchaseService) enterShop(ctx context.Context, token string, chatID int64, msg *webhookdomain.Message) error {
+	var from *webhookdomain.User
+	if msg != nil {
+		from = msg.From
+	}
+	return s.enterShopForUser(ctx, token, chatID, from)
+}
+
+// StartFromMenu 从主菜单/欢迎语按钮进入购买流程（无既有会话时也允许）。
+func (s *purchaseService) StartFromMenu(ctx context.Context, token string, chatID int64, from webhookdomain.User) error {
+	return s.enterShopForUser(ctx, token, chatID, &from)
+}
+
+// ShowWallet 查询并展示当前商城账号余额（主菜单「我的钱包」入口）。
+func (s *purchaseService) ShowWallet(ctx context.Context, token string, chatID int64, from webhookdomain.User) error {
+	if s.ports.Identity == nil || s.ports.Wallet == nil {
+		return s.sendError(ctx, token, chatID, nil, "purchase.unavailable")
+	}
+	user, err := s.ports.Identity.ResolveOrProvision(ctx,
+		fmt.Sprintf("%d", from.ID), from.UserName, from.FirstName, from.LastName)
+	if err != nil || user == nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.identity_failed")
+	}
+	loc := s.locale()
+	currency := ""
+	if s.ports.Settings != nil {
+		if cur, e := s.ports.Settings.GetCurrency(ctx); e == nil && cur != "" {
+			currency = cur
+		}
+	}
+	balance, err := s.ports.Wallet.GetBalance(ctx, user.ID)
+	if err != nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.error")
+	}
+	msg := localizedText(purchaseTexts["purchase.wallet_title"], loc) + "\n\n" +
+		localizedText(purchaseTexts["purchase.wallet_balance"], loc) + " " + formatAmount(balance, currency)
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
+		contract.SendMessageOptions{DisableWebPagePreview: true})
+}
+
+// enterShopForUser 进入购买流程：解析/创建商城账号并展示分类。
+func (s *purchaseService) enterShopForUser(ctx context.Context, token string, chatID int64, from *webhookdomain.User) error {
 	if s.ports.Catalog == nil || s.ports.Orders == nil || s.ports.Identity == nil {
 		return s.sendError(ctx, token, chatID, nil, "purchase.unavailable")
 	}
 
 	var user *contract.PurchaseUser
 	var err error
-	if msg.From != nil {
+	if from != nil {
 		user, err = s.ports.Identity.ResolveOrProvision(ctx,
-			fmt.Sprintf("%d", msg.From.ID), msg.From.UserName, msg.From.FirstName, msg.From.LastName)
+			fmt.Sprintf("%d", from.ID), from.UserName, from.FirstName, from.LastName)
 		if err != nil {
 			return s.sendError(ctx, token, chatID, err, "purchase.identity_failed")
 		}
@@ -813,6 +879,15 @@ func (s *purchaseService) confirmOrder(ctx context.Context, token string, chatID
 
 	var sb strings.Builder
 	sb.WriteString(s.t(view, "purchase.preview_title") + "\n\n")
+	// 多 SKU 商品在确认单顶部显示所选规格。
+	if len(view.selected.SKUs) > 1 {
+		for _, sku := range view.selected.SKUs {
+			if sku.ID == view.selectedSKUID {
+				sb.WriteString(s.t(view, "purchase.sku") + "：" + sku.Code + "\n\n")
+				break
+			}
+		}
+	}
 	for _, it := range preview.Items {
 		sb.WriteString("• " + it.Title)
 		if it.CardCheckEnabled {
@@ -981,14 +1056,29 @@ func (s *purchaseService) renderPaymentResult(ctx context.Context, token string,
 	if result.PayURL != "" {
 		sb.WriteString("\n🔗 " + result.PayURL + "\n")
 	}
+	// 余额支付成功后展示当前账户余额。
+	if result.WalletPaidAmount != "" && result.WalletPaidAmount != "0" {
+		if view != nil && s.ports.Wallet != nil {
+			if balance, err := s.ports.Wallet.GetBalance(ctx, view.userID); err == nil {
+				sb.WriteString(localizedText(purchaseTexts["purchase.balance_after"], loc) + " " + formatAmount(balance, created.Currency) + "\n")
+			}
+		}
+	}
 	sb.WriteString("\n" + localizedText(purchaseTexts["purchase.pay_help"], loc))
 
 	s.mu.Lock()
 	delete(s.sessions, chatID)
 	s.mu.Unlock()
 
+	// 在线支付：附带「打开支付链接」按钮。
+	var markup inlineKeyboard
+	if result.PayURL != "" {
+		markup = inlineKeyboard{InlineKeyboard: [][]inlineButton{
+			{{Text: localizedText(purchaseTexts["purchase.pay_open_link"], loc), URL: result.PayURL}},
+		}}
+	}
 	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
-		contract.SendMessageOptions{DisableWebPagePreview: true})
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: markup})
 }
 
 func (s *purchaseService) cancel(ctx context.Context, token string, chatID int64) error {
@@ -1022,10 +1112,18 @@ func (s *purchaseService) sendError(ctx context.Context, token string, chatID in
 	if view != nil {
 		loc = view.locale
 	}
-	msg := localizedText(purchaseTexts[key], loc)
+	// 优先用错误分类映射的友好文案；无分类时回退到调用方指定的通用 key。
+	msgKey := key
 	if err != nil {
-		msg += "\n\n(" + err.Error() + ")"
+		if classified := contract.ClassifyPurchaseError(err); classified != "" {
+			msgKey = classified
+		}
 	}
+	msg := localizedText(purchaseTexts[msgKey], loc)
+	if msg == "" {
+		msg = localizedText(purchaseTexts["purchase.error"], loc)
+	}
+	// 不把内部错误原文拼进用户消息，避免泄露内部细节。
 	_ = s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
 		contract.SendMessageOptions{DisableWebPagePreview: true})
 	return nil
@@ -1055,8 +1153,15 @@ func (s *purchaseService) productKeyboard(view *purchaseView, products []contrac
 	}
 	rows := make([][]inlineButton, 0, len(products)+2)
 	for _, p := range products {
+		label := p.Title + "  " + formatAmount(p.PriceAmount, currency)
+		// 可发数徽章：-1 表示无限库存。
+		if p.StockAvailable < 0 {
+			label += "  (" + s.t(view, "purchase.stock_label") + " " + s.t(view, "purchase.stock_unlimited") + ")"
+		} else {
+			label += "  (" + s.t(view, "purchase.stock_label") + " " + fmt.Sprintf("%d", p.StockAvailable) + ")"
+		}
 		rows = append(rows, []inlineButton{{
-			Text:         p.Title + "  " + formatAmount(p.PriceAmount, currency),
+			Text:         label,
 			CallbackData: cbProdPrefix + p.Slug,
 		}})
 	}
@@ -1401,4 +1506,17 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.card_type_desc":   {"zh-CN": "选择卡类型：", "zh-TW": "選擇卡類型：", "en-US": "Select a card type:"},
 	"purchase.incomplete":       {"zh-CN": "请先完成全部必选配置（挑卡模式/国家/品牌/卡类型/BIN）。", "zh-TW": "請先完成全部必選配置（挑卡模式/國家/品牌/卡類型/BIN）。", "en-US": "Please complete all required selections first."},
 	"purchase.country_invalid":  {"zh-CN": "该国家代码不在可选范围内，请重试。", "zh-TW": "該國家代碼不在可選範圍內，請重試。", "en-US": "Country code not available, try again."},
+	"purchase.group_not_supported": {"zh-CN": "🛒 购买功能请在私聊中使用，群组内暂不支持。", "zh-TW": "🛒 購買功能請在私聊中使用，群組內暫不支援。", "en-US": "🛒 Please buy in a private chat with the bot."},
+	"purchase.session_expired":    {"zh-CN": "⏰ 购买会话已过期，请重新发送 /shop 开始选购。", "zh-TW": "⏰ 購買會話已過期，請重新發送 /shop 開始選購。", "en-US": "⏰ Purchase session expired. Send /shop to start over."},
+	"purchase.stock_insufficient": {"zh-CN": "😔 所选组合库存不足，请调整数量或挑选条件后重试。", "zh-TW": "😔 所選組合庫存不足，請調整數量或挑選條件後重試。", "en-US": "😔 Not enough stock for the selected options, adjust and retry."},
+	"purchase.identity_required":  {"zh-CN": "请先绑定商城账号后再购买。", "zh-TW": "請先綁定商城帳號後再購買。", "en-US": "Please link your shop account first."},
+	"purchase.insufficient":       {"zh-CN": "💳 余额不足，请先充值。", "zh-TW": "💳 餘額不足，請先充值。", "en-US": "💳 Insufficient balance, please top up."},
+	"purchase.payment_failed":     {"zh-CN": "支付发起失败，请稍后重试或联系客服。", "zh-TW": "支付發起失敗，請稍後重試或聯絡客服。", "en-US": "Failed to start payment, try again later."},
+	"purchase.order_failed":       {"zh-CN": "下单失败，请稍后重试。", "zh-TW": "下單失敗，請稍後重試。", "en-US": "Failed to place order, try again later."},
+	"purchase.stock_label":        {"zh-CN": "可发", "zh-TW": "可發", "en-US": "stock"},
+	"purchase.stock_unlimited":    {"zh-CN": "不限", "zh-TW": "不限", "en-US": "unlimited"},
+	"purchase.pay_open_link":      {"zh-CN": "🔗 打开支付链接", "zh-TW": "🔗 開啟支付連結", "en-US": "🔗 Open payment link"},
+	"purchase.balance_after":      {"zh-CN": "账户余额", "zh-TW": "帳戶餘額", "en-US": "Balance"},
+	"purchase.wallet_title":       {"zh-CN": "💰 我的钱包", "zh-TW": "💰 我的錢包", "en-US": "💰 My Wallet"},
+	"purchase.wallet_balance":     {"zh-CN": "当前余额", "zh-TW": "目前餘額", "en-US": "Current balance"},
 }
