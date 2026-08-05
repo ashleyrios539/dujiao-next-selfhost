@@ -233,9 +233,18 @@ type PurchaseOrderGateway interface {
 	Create(ctx context.Context, input PurchaseCreateInput) (*PurchaseCreated, error)
 }
 
+// ShopPaymentChannel 支付渠道展示项（bot 在线支付选择用）。
+type ShopPaymentChannel struct {
+	ID          uint
+	Name        string
+	ChannelType string
+}
+
 // PurchasePaymentGateway 提供支付发起能力（由 container 适配到 PaymentService）。
 type PurchasePaymentGateway interface {
 	CreatePayment(ctx context.Context, input PurchasePaymentInput) (*PurchasePaymentResult, error)
+	// ListPaymentChannels 返回可用的在线支付渠道（活跃渠道，供 bot 内选择）。
+	ListPaymentChannels(ctx context.Context) ([]ShopPaymentChannel, error)
 }
 
 // PurchaseWalletReader 提供余额查询。

@@ -25,6 +25,7 @@ const (
 	purchaseStepPickCardType    = "pick_card_type"  // 选卡类型（type 模式）
 	purchaseStepPickBin         = "pick_bin"        // 输入 BIN
 	purchaseStepConfirm         = "confirm"         // 确认下单
+	purchaseStepPickChannel     = "pick_channel"    // 选择在线支付渠道
 )
 
 // 回调 data 前缀。
@@ -43,6 +44,7 @@ const (
 	cbConfirm        = "shop:confirm"
 	cbPayBalance     = "shop:pay:balance"
 	cbPayOnline      = "shop:pay:online"
+	cbPayChannel     = "shop:pay:ch:"
 	cbBackCat        = "shop:back:cat"
 	cbBackProd       = "shop:back:prod"
 	cbBackDetail     = "shop:back:detail"
@@ -253,6 +255,8 @@ func (s *purchaseService) handleCallback(ctx context.Context, token string, cb *
 		return true, s.payWithBalance(ctx, token, chatID)
 	case data == cbPayOnline:
 		return true, s.payOnline(ctx, token, chatID)
+	case strings.HasPrefix(data, cbPayChannel):
+		return true, s.selectPayChannel(ctx, token, chatID, strings.TrimPrefix(data, cbPayChannel))
 	}
 	return true, nil
 }
@@ -1017,7 +1021,48 @@ func (s *purchaseService) payWithBalance(ctx context.Context, token string, chat
 	return s.renderPaymentResult(ctx, token, chatID, created, result)
 }
 
+// payOnline 发起在线支付：先查可用渠道，多渠道时让用户选择，单渠道直接支付。
 func (s *purchaseService) payOnline(ctx context.Context, token string, chatID int64) error {
+	if s.ports.Payments == nil {
+		return s.sendError(ctx, token, chatID, nil, "purchase.error")
+	}
+	channels, err := s.ports.Payments.ListPaymentChannels(ctx)
+	if err != nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.error")
+	}
+	if len(channels) == 0 {
+		return s.sendError(ctx, token, chatID, nil, "purchase.no_channel")
+	}
+	if len(channels) == 1 {
+		return s.createOnlinePayment(ctx, token, chatID, channels[0].ID)
+	}
+	// 多个渠道：展示选择键盘（此时尚未创建订单）。
+	view := s.snapshot(chatID)
+	loc := "zh-CN"
+	if view != nil {
+		loc = view.locale
+	}
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.step = purchaseStepPickChannel
+	}
+	s.mu.Unlock()
+	msg := localizedText(purchaseTexts["purchase.select_channel_title"], loc)
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.channelKeyboard(channels, loc)})
+}
+
+// selectPayChannel 用户选定在线支付渠道后发起支付。
+func (s *purchaseService) selectPayChannel(ctx context.Context, token string, chatID int64, channelIDStr string) error {
+	id, err := strconv.ParseUint(channelIDStr, 10, 64)
+	if err != nil || id == 0 {
+		return s.sendError(ctx, token, chatID, err, "purchase.error")
+	}
+	return s.createOnlinePayment(ctx, token, chatID, uint(id))
+}
+
+// createOnlinePayment 创建订单并发起指定渠道的在线支付。
+func (s *purchaseService) createOnlinePayment(ctx context.Context, token string, chatID int64, channelID uint) error {
 	created, err := s.createOrder(ctx, token, chatID)
 	if err != nil {
 		return s.sendError(ctx, token, chatID, err, "purchase.error")
@@ -1026,12 +1071,26 @@ func (s *purchaseService) payOnline(ctx context.Context, token string, chatID in
 		return s.sendError(ctx, token, chatID, nil, "purchase.error")
 	}
 	result, err := s.ports.Payments.CreatePayment(ctx, contract.PurchasePaymentInput{
-		OrderID: created.OrderID,
+		OrderID:   created.OrderID,
+		ChannelID: channelID,
 	})
 	if err != nil {
 		return s.sendError(ctx, token, chatID, err, "purchase.error")
 	}
 	return s.renderPaymentResult(ctx, token, chatID, created, result)
+}
+
+// channelKeyboard 在线支付渠道选择键盘。
+func (s *purchaseService) channelKeyboard(channels []contract.ShopPaymentChannel, loc string) inlineKeyboard {
+	rows := make([][]inlineButton, 0, len(channels)+1)
+	for _, ch := range channels {
+		rows = append(rows, []inlineButton{{
+			Text:         ch.Name,
+			CallbackData: cbPayChannel + fmt.Sprintf("%d", ch.ID),
+		}})
+	}
+	rows = append(rows, []inlineButton{{Text: "🔙 " + localizedText(purchaseTexts["purchase.back"], loc), CallbackData: cbBackDetail}})
+	return inlineKeyboard{InlineKeyboard: rows}
 }
 
 func (s *purchaseService) renderPaymentResult(ctx context.Context, token string, chatID int64, created *contract.PurchaseCreated, result *contract.PurchasePaymentResult) error {
@@ -1070,8 +1129,9 @@ func (s *purchaseService) renderPaymentResult(ctx context.Context, token string,
 	delete(s.sessions, chatID)
 	s.mu.Unlock()
 
-	// 在线支付：附带「打开支付链接」按钮。
-	var markup inlineKeyboard
+	// 在线支付：附带「打开支付链接」按钮。PayURL 为空时保持 nil，避免序列化出
+	// 空的 inline_keyboard 数组被 Telegram 拒绝（400 Bad Request）。
+	var markup interface{}
 	if result.PayURL != "" {
 		markup = inlineKeyboard{InlineKeyboard: [][]inlineButton{
 			{{Text: localizedText(purchaseTexts["purchase.pay_open_link"], loc), URL: result.PayURL}},
@@ -1519,4 +1579,6 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.balance_after":      {"zh-CN": "账户余额", "zh-TW": "帳戶餘額", "en-US": "Balance"},
 	"purchase.wallet_title":       {"zh-CN": "💰 我的钱包", "zh-TW": "💰 我的錢包", "en-US": "💰 My Wallet"},
 	"purchase.wallet_balance":     {"zh-CN": "当前余额", "zh-TW": "目前餘額", "en-US": "Current balance"},
+	"purchase.no_channel":         {"zh-CN": "暂无可用的在线支付渠道，请稍后再试或联系客服。", "zh-TW": "暫無可用的線上支付管道，請稍後再試或聯絡客服。", "en-US": "No online payment channel available right now."},
+	"purchase.select_channel_title": {"zh-CN": "请选择支付渠道：", "zh-TW": "請選擇支付管道：", "en-US": "Choose a payment channel:"},
 }

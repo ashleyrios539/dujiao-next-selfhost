@@ -13,6 +13,7 @@ import (
 	"github.com/dujiao-next/internal/modules/identity/userauth/application"
 	orderapp "github.com/dujiao-next/internal/modules/order/application"
 	paymentapp "github.com/dujiao-next/internal/modules/payment/application"
+	paymentcontract "github.com/dujiao-next/internal/modules/payment/contract"
 	settingsapp "github.com/dujiao-next/internal/modules/settings/application"
 	"github.com/dujiao-next/internal/modules/telegram/webhook/contract"
 	walletapp "github.com/dujiao-next/internal/modules/wallet/application"
@@ -325,6 +326,32 @@ func mapPurchaseItems(items []contract.PurchaseItem) []orderapp.CreateOrderItem 
 }
 
 // --- PurchasePaymentGateway ---
+
+// --- PurchasePaymentGateway ---
+
+// ListPaymentChannels 返回活跃的在线支付渠道（bot 在线支付选择用）。
+func (p *telegramPurchasePorts) ListPaymentChannels(ctx context.Context) ([]contract.ShopPaymentChannel, error) {
+	if p.payments == nil {
+		return nil, nil
+	}
+	channels, _, err := p.payments.ListChannels(paymentcontract.ChannelListFilter{
+		Page:       1,
+		PageSize:   100,
+		ActiveOnly: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.ShopPaymentChannel, 0, len(channels))
+	for _, ch := range channels {
+		out = append(out, contract.ShopPaymentChannel{
+			ID:          ch.ID,
+			Name:        ch.Name,
+			ChannelType: ch.ChannelType,
+		})
+	}
+	return out, nil
+}
 
 func (p *telegramPurchasePorts) CreatePayment(ctx context.Context, input contract.PurchasePaymentInput) (*contract.PurchasePaymentResult, error) {
 	if p.payments == nil {

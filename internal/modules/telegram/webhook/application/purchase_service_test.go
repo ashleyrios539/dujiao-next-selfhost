@@ -63,11 +63,19 @@ func (o *stubOrders) Create(context.Context, contract.PurchaseCreateInput) (*con
 }
 
 type stubPayments struct {
-	result *contract.PurchasePaymentResult
+	result   *contract.PurchasePaymentResult
+	channels []contract.ShopPaymentChannel
 }
 
 func (p *stubPayments) CreatePayment(context.Context, contract.PurchasePaymentInput) (*contract.PurchasePaymentResult, error) {
 	return p.result, nil
+}
+
+func (p *stubPayments) ListPaymentChannels(context.Context) ([]contract.ShopPaymentChannel, error) {
+	if p.channels == nil {
+		return nil, nil
+	}
+	return p.channels, nil
 }
 
 type stubWallet struct{ bal string }
@@ -443,5 +451,141 @@ func TestPurchaseServiceSessionExpires(t *testing.T) {
 
 	if svc.snapshot(100) != nil {
 		t.Fatalf("expected expired session to be cleaned up")
+	}
+}
+
+func TestPurchaseServicePayOnlinePicksChannel(t *testing.T) {
+	product := &contract.ShopProduct{
+		ID: 10, Slug: "dx", Title: "迪士尼卡", Currency: "CNY",
+		PriceAmount: "50.00", FulfillmentType: "auto",
+	}
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog: &stubCatalog{
+			bySlug: map[string]*contract.ShopProduct{"dx": product},
+		},
+		Orders: &stubOrders{
+			created: &contract.PurchaseCreated{OrderID: 3, OrderNo: "O3", Currency: "CNY", TotalAmount: "50.00"},
+		},
+		Payments: &stubPayments{
+			channels: []contract.ShopPaymentChannel{{ID: 1, Name: "EPUSDT"}},
+			result: &contract.PurchasePaymentResult{
+				OrderPaid:       false,
+				OnlinePayAmount: "50.00",
+				PayURL:          "https://pay.example.com/3",
+			},
+		},
+		Wallet:   &stubWallet{bal: "0.00"},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+	}, bot, func() string { return "zh-CN" })
+
+	// 进入购买并选商品
+	handled, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		Message: &webhookdomain.Message{
+			Chat: webhookdomain.Chat{ID: 100, Type: "private"},
+			From: &webhookdomain.User{ID: 200, UserName: "alice"},
+			Text: "/shop",
+		},
+	})
+	if err != nil || !handled {
+		t.Fatalf("enter shop failed: handled=%v err=%v", handled, err)
+	}
+	// 选商品
+	handled, err = svc.handle(context.Background(), "tok", webhookdomain.Update{
+		CallbackQuery: &webhookdomain.CallbackQuery{
+			ID: "cb1", From: webhookdomain.User{ID: 200}, Data: cbProdPrefix + "dx",
+			Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}},
+		},
+	})
+	if err != nil || !handled {
+		t.Fatalf("select product failed: handled=%v err=%v", handled, err)
+	}
+	// 点在线支付（单渠道应直接发起支付）
+	handled, err = svc.handle(context.Background(), "tok", webhookdomain.Update{
+		CallbackQuery: &webhookdomain.CallbackQuery{
+			ID: "cb2", From: webhookdomain.User{ID: 200}, Data: cbPayOnline,
+			Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}},
+		},
+	})
+	if err != nil || !handled {
+		t.Fatalf("pay online failed: handled=%v err=%v", handled, err)
+	}
+	// 应显示订单号 + 支付链接
+	joined := ""
+	for _, m := range bot.sent {
+		joined += m + "\n"
+	}
+	if !containsStr(joined, "O3") || !containsStr(joined, "https://pay.example.com/3") {
+		t.Fatalf("expected order no and pay url, got: %v", bot.sent)
+	}
+}
+
+func TestPurchaseServicePayOnlineMultiChannel(t *testing.T) {
+	product := &contract.ShopProduct{
+		ID: 10, Slug: "dx", Title: "迪士尼卡", Currency: "CNY",
+		PriceAmount: "50.00", FulfillmentType: "auto",
+	}
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog: &stubCatalog{
+			bySlug: map[string]*contract.ShopProduct{"dx": product},
+		},
+		Orders: &stubOrders{
+			created: &contract.PurchaseCreated{OrderID: 3, OrderNo: "O3", Currency: "CNY", TotalAmount: "50.00"},
+		},
+		Payments: &stubPayments{
+			channels: []contract.ShopPaymentChannel{
+				{ID: 1, Name: "EPUSDT"},
+				{ID: 2, Name: "支付宝"},
+			},
+			result: &contract.PurchasePaymentResult{
+				OrderPaid: false, OnlinePayAmount: "50.00", PayURL: "https://pay.example.com/3",
+			},
+		},
+		Wallet:   &stubWallet{bal: "0.00"},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+	}, bot, func() string { return "zh-CN" })
+
+	svc.handle(context.Background(), "tok", webhookdomain.Update{
+		Message: &webhookdomain.Message{
+			Chat: webhookdomain.Chat{ID: 100, Type: "private"},
+			From: &webhookdomain.User{ID: 200, UserName: "alice"},
+			Text: "/shop",
+		},
+	})
+	svc.handle(context.Background(), "tok", webhookdomain.Update{
+		CallbackQuery: &webhookdomain.CallbackQuery{
+			ID: "cb1", From: webhookdomain.User{ID: 200}, Data: cbProdPrefix + "dx",
+			Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}},
+		},
+	})
+	// 点在线支付：应出现渠道选择键盘
+	if _, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		CallbackQuery: &webhookdomain.CallbackQuery{
+			ID: "cb2", From: webhookdomain.User{ID: 200}, Data: cbPayOnline,
+			Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}},
+		},
+	}); err != nil {
+		t.Fatalf("pay online err: %v", err)
+	}
+	last := bot.markups[len(bot.markups)-1]
+	if !keyboardContains(last, "支付宝") {
+		t.Fatalf("expected channel keyboard with 支付宝, got: %+v", last)
+	}
+	// 选渠道 2 → 发起支付
+	if _, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		CallbackQuery: &webhookdomain.CallbackQuery{
+			ID: "cb3", From: webhookdomain.User{ID: 200}, Data: cbPayChannel + "2",
+			Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}},
+		},
+	}); err != nil {
+		t.Fatalf("select channel err: %v", err)
+	}
+	joined := ""
+	for _, m := range bot.sent {
+		joined += m + "\n"
+	}
+	if !containsStr(joined, "O3") || !containsStr(joined, "https://pay.example.com/3") {
+		t.Fatalf("expected order no and pay url, got: %v", bot.sent)
 	}
 }
