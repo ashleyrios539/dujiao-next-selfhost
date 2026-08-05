@@ -111,6 +111,8 @@ type CreateProductInput struct {
 	CardCheckFee        *decimal.Decimal
 	PickEnabled         *bool
 	PickPrices          *map[string]interface{}
+	BotVisible          *bool
+	WebVisible          *bool
 	IsActive            *bool
 	SortOrder           int
 }

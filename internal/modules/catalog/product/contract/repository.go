@@ -21,6 +21,10 @@ type ListFilter struct {
 	OnlyActive         bool
 	WithCategory       bool
 	UpdatedAfter       *time.Time
+	// WebVisible 非 nil 时按「是否在网站商城展示」过滤（nil 表示不过滤）。
+	WebVisible *bool
+	// BotVisible 非 nil 时按「是否在 Telegram bot 展示」过滤（nil 表示不过滤）。
+	BotVisible *bool
 }
 
 // Repository 定义商品领域需要的持久化能力；事务适配保留在 GORM Store。

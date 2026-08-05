@@ -102,6 +102,12 @@ func (r *ProductStore) List(filter productcontract.ListFilter) ([]productdomain.
 			query = query.Where(expr + " = 0")
 		}
 	}
+	if filter.WebVisible != nil {
+		query = query.Where("products.web_visible = ?", *filter.WebVisible)
+	}
+	if filter.BotVisible != nil {
+		query = query.Where("products.bot_visible = ?", *filter.BotVisible)
+	}
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {

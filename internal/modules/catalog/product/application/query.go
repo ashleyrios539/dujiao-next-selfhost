@@ -62,7 +62,10 @@ func NewService(options Options) *Service {
 	}
 }
 
-// ListPublic 获取公开商品列表
+// boolPtr 返回指向布尔值的指针（ListFilter 可见性过滤用）。
+func boolPtr(v bool) *bool { return &v }
+
+// ListPublic 获取公开商品列表（网站商城展示：web_visible = true）
 func (s *Service) ListPublic(categoryID, search string, page, pageSize int) ([]productdomain.Product, int64, error) {
 	categoryIDs, err := expandPublicCategoryIDs(s.categories, categoryID)
 	if err != nil {
@@ -77,6 +80,26 @@ func (s *Service) ListPublic(categoryID, search string, page, pageSize int) ([]p
 		Search:       search,
 		OnlyActive:   true,
 		WithCategory: true,
+		WebVisible:   boolPtr(true),
+	}
+	return s.products.List(filter)
+}
+
+// ListPublicForBot 获取 Telegram bot 展示的商品列表（bot_visible = true，可含仅 bot 商品）。
+func (s *Service) ListPublicForBot(categoryID string, page, pageSize int) ([]productdomain.Product, int64, error) {
+	categoryIDs, err := expandPublicCategoryIDs(s.categories, categoryID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	filter := productcontract.ListFilter{
+		Page:         page,
+		PageSize:     pageSize,
+		CategoryID:   categoryID,
+		CategoryIDs:  categoryIDs,
+		OnlyActive:   true,
+		WithCategory: true,
+		BotVisible:   boolPtr(true),
 	}
 	return s.products.List(filter)
 }
@@ -106,6 +129,7 @@ func (s *Service) ListPublicForTenant(tenant reseller.TenantContext, resellerRep
 		OnlyActive:        true,
 		WithCategory:      true,
 		ExcludeProductIDs: hiddenIDs,
+		WebVisible:        boolPtr(true),
 	}
 	return s.products.List(filter)
 }
@@ -131,17 +155,36 @@ func (s *Service) ListPublicExact(categoryID string, page, pageSize int) ([]prod
 		CategoryID:   categoryID,
 		OnlyActive:   true,
 		WithCategory: true,
+		WebVisible:   boolPtr(true),
 	}
 	return s.products.List(filter)
 }
 
-// GetPublicBySlug 获取公开商品详情
+// GetPublicBySlug 获取公开商品详情（网站商城：web_visible = true）
 func (s *Service) GetPublicBySlug(slug string) (*productdomain.Product, error) {
 	item, err := s.products.GetBySlug(slug, true)
 	if err != nil {
 		return nil, err
 	}
 	if item == nil {
+		return nil, productcontract.ErrNotFound
+	}
+	if !item.WebVisible {
+		return nil, productcontract.ErrNotFound
+	}
+	return item, nil
+}
+
+// GetPublicBySlugForBot 获取 Telegram bot 展示的商品详情（bot_visible = true，可含仅 bot 商品）。
+func (s *Service) GetPublicBySlugForBot(slug string) (*productdomain.Product, error) {
+	item, err := s.products.GetBySlug(slug, true)
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, productcontract.ErrNotFound
+	}
+	if !item.BotVisible {
 		return nil, productcontract.ErrNotFound
 	}
 	return item, nil

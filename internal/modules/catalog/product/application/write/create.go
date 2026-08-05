@@ -143,6 +143,8 @@ func (s *WriteService) Create(input CreateProductInput) (*productdomain.Product,
 		CardCheckFee:         money.FromDecimal(normalizeCardCheckFee(input.CardCheckFee)),
 		PickEnabled:          input.PickEnabled != nil && *input.PickEnabled,
 		PickPrices:           normalizePickPrices(input.PickPrices),
+		BotVisible:           input.BotVisible == nil || *input.BotVisible, // 默认 true：新商品默认在 bot 展示
+		WebVisible:           input.WebVisible == nil || *input.WebVisible, // 默认 true：新商品默认在网站展示
 		IsActive:             isActive,
 		SortOrder:            input.SortOrder,
 	}

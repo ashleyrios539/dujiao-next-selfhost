@@ -47,6 +47,8 @@ type Product struct {
 	CardCheckFee         money.Amount        `gorm:"type:decimal(20,2);not null;default:0" json:"card_check_fee"`          // 测活加价金额
 	PickEnabled          bool                `gorm:"not null;default:false" json:"pick_enabled"`                           // 是否支持挑卡
 	PickPrices           jsonmap.JSON        `gorm:"type:json" json:"pick_prices"`                                         // 挑卡属性加价表（key→单价字符串）
+	BotVisible           bool                `gorm:"not null;default:true;index" json:"bot_visible"`                       // 是否在 Telegram bot 展示
+	WebVisible           bool                `gorm:"not null;default:true;index" json:"web_visible"`                       // 是否在网站商城展示
 	IsActive             bool                `gorm:"default:false;index" json:"is_active"`                                // 是否上架
 	SortOrder            int                 `gorm:"default:0;index" json:"sort_order"`                                   // 排序权重
 	CreatedAt            time.Time           `gorm:"index" json:"created_at"`                                             // 创建时间

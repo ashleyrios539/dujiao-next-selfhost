@@ -77,6 +77,12 @@ func (s *WriteService) Update(id string, input CreateProductInput) (*productdoma
 	if input.PickPrices != nil {
 		product.PickPrices = normalizePickPrices(input.PickPrices)
 	}
+	if input.BotVisible != nil {
+		product.BotVisible = *input.BotVisible
+	}
+	if input.WebVisible != nil {
+		product.WebVisible = *input.WebVisible
+	}
 	rawPurchaseType := strings.TrimSpace(input.PurchaseType)
 	if rawPurchaseType == "" {
 		rawPurchaseType = product.PurchaseType

@@ -49,6 +49,10 @@ func (staticPublicProductQueries) CountPickAttrs(uint) ([]cardsecretcontract.Pic
 	return nil, nil
 }
 
+func (staticPublicProductQueries) CountAvailableByBinPrefix(uint, string) (int64, error) {
+	return 0, nil
+}
+
 type emptyRelatedPostReader struct{}
 
 func (emptyRelatedPostReader) ListPostsForProduct(context.Context, uint, int) ([]contentcontract.RelatedPost, error) {

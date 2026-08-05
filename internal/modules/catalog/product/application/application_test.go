@@ -70,6 +70,10 @@ func (stub stockCounterStub) CountPickAttrs(uint) ([]cardsecretcontract.PickAttr
 	return nil, nil
 }
 
+func (stub stockCounterStub) CountAvailableByProductFiltered(uint, uint, cardsecretcontract.PickFilter) (int64, error) {
+	return 0, nil
+}
+
 func TestListPublicForTenantBuildsVisibilityFilterBeforePagination(t *testing.T) {
 	products := &productRepositoryStub{total: 2}
 	categories := categoryRepositoryStub{

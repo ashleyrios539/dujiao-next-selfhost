@@ -35,6 +35,19 @@ reseller:
 | 用户端显隐 | `frontend/user/src/views/reseller/ResellerConsoleLayout.vue`、`router/index.ts`、`stores/app.ts` | 关闭子站时隐藏"域名/店铺设置/商品定价"导航并守卫重定向；`appStore.resellerSubSitesEnabled` |
 | 管理端 | `frontend/admin/src/views/admin/ResellerProductSettings.vue`、`layouts/AdminLayout.vue` | 定价模式新增"渠道价（批发进价）"+ 输入框；菜单按 `tenant.reseller_sub_sites_enabled` 隐藏域名/站点配置 |
 
+### 网站 / Telegram Bot 渠道可见性（本分支后续新增）
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| 商品字段 | `internal/modules/catalog/product/domain/product.go` | `products` 新增 `bot_visible` / `web_visible` 两个**双向独立**开关（默认 true，GORM AutoMigrate 自动加列） |
+| 列表过滤 | `internal/modules/catalog/product/contract/repository.go` + `store/gormstore/product_store.go` | `ListFilter` 新增 `WebVisible` / `BotVisible`（*bool），store 层分页前过滤 |
+| 网站公开查询 | `internal/modules/catalog/product/application/query.go` | `ListPublic`/`ListPublicExact`/`GetPublicBySlug` 强制 `web_visible=true`（仅 bot 商品在网站直达 slug 返回 404） |
+| bot 查询 | 同上 | 新增 `ListPublicForBot` / `GetPublicBySlugForBot`：按 `bot_visible=true` 过滤，可返回 `web_visible=false` 的仅 bot 商品 |
+| bot 端口 | `internal/app/container/telegram_purchase_ports.go` | `ListProducts`/`GetProductBySlug` 改用 bot 专属查询 |
+| 管理端 | `internal/modules/catalog/product/transport/http/admin_handler.go` + `frontend/admin/src/views/admin/components/ProductEditModal.vue` | 创建/编辑/快捷更新接受 `bot_visible`/`web_visible`；商品编辑弹窗新增"展示渠道"区块（两个开关，三语 i18n） |
+
+约定：`web_visible=false` 只在**网站前台**隐藏（列表+详情），管理端、订单、bot 均不受影响；`bot_visible=false` 只在 bot `/shop` 隐藏。价格/测活/挑卡配置两端共用同一份，无渠道专属定价。
+
 ### 架构约束（必须遵守，改代码会触发失败）
 
 - **文件预算**：`internal/architecture/reseller_vertical_slice_test.go` 限制每个包的文件数

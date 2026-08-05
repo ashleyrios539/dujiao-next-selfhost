@@ -79,6 +79,8 @@ export interface AdminProduct {
   card_check_fee: number
   pick_enabled: boolean
   pick_prices?: Record<string, string>
+  bot_visible: boolean
+  web_visible: boolean
   auto_stock_available: number
   auto_stock_total: number
   auto_stock_locked: number

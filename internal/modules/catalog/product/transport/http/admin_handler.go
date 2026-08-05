@@ -231,6 +231,8 @@ type CreateProductRequest struct {
 	CardCheckFee        *float64                 `json:"card_check_fee"`
 	PickEnabled         *bool                    `json:"pick_enabled"`
 	PickPrices          *map[string]interface{}  `json:"pick_prices"`
+	BotVisible          *bool                    `json:"bot_visible"`
+	WebVisible          *bool                    `json:"web_visible"`
 	IsActive            *bool                    `json:"is_active"`
 	SortOrder           int                      `json:"sort_order"`
 }
@@ -315,6 +317,8 @@ func (h *AdminProductHandler) CreateProduct(c *gin.Context) {
 		CardCheckFee:         toDecimalPtr(req.CardCheckFee),
 		PickEnabled:          req.PickEnabled,
 		PickPrices:           req.PickPrices,
+		BotVisible:           req.BotVisible,
+		WebVisible:           req.WebVisible,
 		IsActive:             req.IsActive,
 		SortOrder:            req.SortOrder,
 	})
@@ -411,6 +415,8 @@ func (h *AdminProductHandler) UpdateProduct(c *gin.Context) {
 		CardCheckFee:         toDecimalPtr(req.CardCheckFee),
 		PickEnabled:          req.PickEnabled,
 		PickPrices:           req.PickPrices,
+		BotVisible:           req.BotVisible,
+		WebVisible:           req.WebVisible,
 		IsActive:             req.IsActive,
 		SortOrder:            req.SortOrder,
 	})
@@ -482,6 +488,8 @@ type QuickUpdateProductRequest struct {
 	CardCheckEnabled *bool    `json:"card_check_enabled"`
 	CardCheckFee     *float64 `json:"card_check_fee"`
 	PickEnabled      *bool    `json:"pick_enabled"`
+	BotVisible       *bool    `json:"bot_visible"`
+	WebVisible       *bool    `json:"web_visible"`
 }
 
 type UpdateWholesalePricesRequest struct {
@@ -548,6 +556,12 @@ func (h *AdminProductHandler) QuickUpdateProduct(c *gin.Context) {
 	}
 	if req.PickEnabled != nil {
 		fields["pick_enabled"] = *req.PickEnabled
+	}
+	if req.BotVisible != nil {
+		fields["bot_visible"] = *req.BotVisible
+	}
+	if req.WebVisible != nil {
+		fields["web_visible"] = *req.WebVisible
 	}
 	if len(fields) == 0 {
 		ginutil.RespondError(c, response.CodeBadRequest, "error.bad_request", nil)

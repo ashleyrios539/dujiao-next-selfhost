@@ -81,7 +81,7 @@ func (p *telegramPurchasePorts) ListProducts(_ context.Context, categoryID strin
 	if p.products == nil {
 		return nil, 0, nil
 	}
-	products, total, err := p.products.ListPublic(categoryID, "", page, pageSize)
+	products, total, err := p.products.ListPublicForBot(categoryID, page, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -96,7 +96,7 @@ func (p *telegramPurchasePorts) GetProductBySlug(_ context.Context, slug string)
 	if p.products == nil {
 		return nil, fmt.Errorf("product service unavailable")
 	}
-	product, err := p.products.GetPublicBySlug(slug)
+	product, err := p.products.GetPublicBySlugForBot(slug)
 	if err != nil {
 		return nil, err
 	}

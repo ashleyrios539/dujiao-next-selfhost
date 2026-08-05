@@ -164,6 +164,8 @@ const form = reactive({
   card_check_fee: 0,
   pick_enabled: false,
   pick_prices: {} as Record<string, number>,
+  bot_visible: true,
+  web_visible: true,
   is_active: true,
   sort_order: 0,
   manual_form_schema: { fields: [] as ManualFormField[] },
@@ -531,6 +533,8 @@ const resetForm = () => {
     card_check_fee: 0,
     pick_enabled: false,
     pick_prices: {},
+    bot_visible: true,
+    web_visible: true,
     is_active: true,
     sort_order: 0,
     manual_form_schema: { fields: [] },
@@ -583,6 +587,8 @@ const populateForm = (product: AdminProduct) => {
     card_check_fee: Number(product.card_check_fee || 0),
     pick_enabled: Boolean(product.pick_enabled),
     pick_prices: normalizePickPrices(product.pick_prices),
+    bot_visible: product.bot_visible ?? true,
+    web_visible: product.web_visible ?? true,
     is_active: product.is_active ?? true,
     sort_order: Number(product.sort_order || 0),
     manual_form_schema: parseManualFormSchemaForEdit(product.manual_form_schema),
@@ -659,6 +665,8 @@ const handleSubmit = async () => {
       card_check_fee: Number(form.card_check_fee) || 0,
       pick_enabled: form.pick_enabled,
       pick_prices: encodePickPrices(form.pick_prices),
+      bot_visible: form.bot_visible,
+      web_visible: form.web_visible,
       is_active: form.is_active,
       sort_order: Number(form.sort_order) || 0,
       manual_form_schema: normalizeManualFormSchemaForSubmit(),
@@ -1119,6 +1127,20 @@ watch(
               </div>
             </div>
             <p v-if="form.pick_enabled" class="mt-2 text-xs text-muted-foreground">{{ t('admin.products.form.pickPriceTip') }}</p>
+          </div>
+
+          <div class="col-span-1 md:col-span-2 border-t border-border pt-4">
+            <div class="flex flex-wrap items-center gap-4">
+              <div class="inline-flex items-center gap-2">
+                <Switch id="bot_visible" v-model="form.bot_visible" />
+                <Label for="bot_visible" class="text-sm text-muted-foreground select-none">{{ t('admin.products.form.botVisible') }}</Label>
+              </div>
+              <div class="inline-flex items-center gap-2">
+                <Switch id="web_visible" v-model="form.web_visible" />
+                <Label for="web_visible" class="text-sm text-muted-foreground select-none">{{ t('admin.products.form.webVisible') }}</Label>
+              </div>
+            </div>
+            <p class="mt-1 text-xs text-muted-foreground">{{ t('admin.products.form.visibleTip') }}</p>
           </div>
 
           <div class="col-span-1 md:col-span-2">
