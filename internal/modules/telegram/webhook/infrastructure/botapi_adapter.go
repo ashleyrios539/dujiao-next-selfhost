@@ -76,3 +76,12 @@ func (a *BotAPIAdapter) SetWebhook(ctx context.Context, botToken, webhookURL, se
 func (a *BotAPIAdapter) DeleteWebhook(ctx context.Context, botToken string) error {
 	return a.client.DeleteWebhook(ctx, botToken)
 }
+
+// SendPhotoBytes 通过 sendPhoto 发送内存中的图片文件。
+func (a *BotAPIAdapter) SendPhotoBytes(ctx context.Context, botToken, chatID, fileName string, content []byte, caption string, options contract.SendMessageOptions) error {
+	return a.client.SendPhotoBytes(ctx, botToken, chatID, fileName, content, caption, notifybotapi.SendMessageOptions{
+		ParseMode:             options.ParseMode,
+		DisableWebPagePreview: options.DisableWebPagePreview,
+		ReplyMarkup:           options.ReplyMarkup,
+	})
+}

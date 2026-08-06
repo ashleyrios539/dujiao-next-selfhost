@@ -59,8 +59,10 @@ reseller:
 | bot 充值 | 同上 | `/recharge` 同样只走 epusdt，聊天内展示充值 USDT 金额与收款地址 |
 | bot 商品简介 | `internal/app/container/telegram_purchase_ports.go` + `purchase_service.go` | `ShopProduct.Description` 由 `DescriptionJSON` 填充，`renderDetail` 展示（与网站同源自动同步） |
 | txt 发货 | `internal/modules/telegram/notify/infrastructure/botapi/client.go` + `internal/app/container/native_bot_notifier.go` | 新增 `SendDocumentBytes`（sendDocument multipart 内存文件）；发货后把卡密 payload 以 `卡密_<订单号>.txt` 文件推送到用户私聊 |
+| 二维码+复制 | `purchase_service.go` + `botapi/client.go` + `webhook/contract/ports.go` + `webhook/infrastructure/botapi_adapter.go` | epusdt 付款/充值页把地址渲染为 Markdown 代码块（点按即复制），并附带**进程内生成**的收款地址二维码图片（`buildQRCodePNG` 用 `boombuler/barcode`，新增直接依赖，不依赖外部二维码服务）；`BotAPIClient` 新增 `SendPhotoBytes`（sendPhoto multipart） |
 
 要点：epusdt 付款关键字段放在 `ProviderPayload` **顶层**（非 `data` 子对象），bot 端读取不依赖具体网关响应结构；GMPay 创建响应可能不含 `network`，adapter 已回退渠道配置 `network`（tron）。
+付款/充值页**只显示应付 USDT 一行**（不显示 store 币种行，避免币种混淆）；充值输入提示明确为「请输入充值 USDT 金额」。**充值付款页展示后立即清空会话**：用户再输入数字不会重复创建充值订单，任意文本输入自动回退主菜单（/start 页面）；付款/充值页均带「🏠 返回主页」按钮（callback `menu`，非 `shop:` 前缀，由主 Service 处理）。二维码发送为 best-effort（失败静默忽略，避免 webhook 重试造成重复下单）。
 
 ### 架构约束（必须遵守，改代码会触发失败）
 

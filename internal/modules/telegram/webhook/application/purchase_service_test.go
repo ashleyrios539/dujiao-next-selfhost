@@ -100,6 +100,7 @@ func (s *stubSettings) GetSiteName(context.Context) (string, error) { return s.n
 type fakeBotAPI struct {
 	sent    []string
 	markups []inlineKeyboard
+	photos  []string // SendPhotoBytes 的 caption 记录
 }
 
 func (f *fakeBotAPI) SendMessage(_ context.Context, _, _ string, message string, opts contract.SendMessageOptions) error {
@@ -107,6 +108,10 @@ func (f *fakeBotAPI) SendMessage(_ context.Context, _, _ string, message string,
 	if mk, ok := opts.ReplyMarkup.(inlineKeyboard); ok {
 		f.markups = append(f.markups, mk)
 	}
+	return nil
+}
+func (f *fakeBotAPI) SendPhotoBytes(_ context.Context, _, _, _ string, _ []byte, caption string, _ contract.SendMessageOptions) error {
+	f.photos = append(f.photos, caption)
 	return nil
 }
 func (f *fakeBotAPI) AnswerCallbackQuery(context.Context, string, string, contract.AnswerCallbackOptions) error {
@@ -579,9 +584,23 @@ func TestPurchaseServicePayOnlineEpusdtShowsAddress(t *testing.T) {
 			t.Fatalf("expected %q in epusdt payment message, got: %v", want, last)
 		}
 	}
+	// 地址应为代码块（可点按复制），且不再出现 store 币种金额行
+	if !containsStr(last, "```") {
+		t.Fatalf("expected address in code block, got: %v", last)
+	}
+	if containsStr(last, "50.00 CNY") {
+		t.Fatalf("store currency line should be removed, got: %v", last)
+	}
+	// 二维码图片已发送
+	if len(bot.photos) != 1 {
+		t.Fatalf("expected 1 QR photo, got: %d", len(bot.photos))
+	}
 	markup := bot.markups[len(bot.markups)-1]
 	if !keyboardContains(markup, "刷新支付状态") {
 		t.Fatalf("expected refresh payment status button, got: %+v", markup)
+	}
+	if !keyboardContains(markup, "返回主页") {
+		t.Fatalf("expected exit home button, got: %+v", markup)
 	}
 }
 
@@ -703,9 +722,11 @@ func (o *stubOrderReader) GetOrderByOrderNo(context.Context, uint, string) (*con
 
 type stubRecharge struct {
 	recharge *contract.ShopRecharge
+	calls    int
 }
 
 func (r *stubRecharge) CreateRecharge(context.Context, contract.PurchaseRechargeInput) (*contract.ShopRecharge, error) {
+	r.calls++
 	return r.recharge, nil
 }
 func (r *stubRecharge) GetRechargeStatus(context.Context, uint, string) (*contract.ShopRecharge, error) {
@@ -790,6 +811,69 @@ func TestPurchaseServiceRecharge(t *testing.T) {
 	last := bot.sent[len(bot.sent)-1]
 	if !containsStr(last, "WR1") || !containsStr(last, "https://pay.example.com/wr1") {
 		t.Fatalf("expected recharge order + pay url, got: %v", last)
+	}
+}
+
+func TestPurchaseServiceRechargeEpusdtShowsAddressAndQR(t *testing.T) {
+	bot := &fakeBotAPI{}
+	rechargeStub := &stubRecharge{recharge: &contract.ShopRecharge{
+		RechargeNo: "WR2", PayableAmount: "100.00", Currency: "CNY", Status: "pending",
+		ReceiveAddress: "TLq32V4saMHPS71juNAZ6KBmhTTSLCRkp6",
+		PayAmount:      "6.98",
+		Token:          "usdt",
+		Network:        "tron",
+		ExpiresAt:      "2026-08-06 23:30",
+		PayURL:         "https://pay.example.com/wr2",
+	}}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog:  &stubCatalog{},
+		Orders:   &stubOrders{},
+		Payments: &stubPayments{channels: []contract.ShopPaymentChannel{{ID: 1, Name: "USDT", ChannelType: "epusdt"}}},
+		Recharge: rechargeStub,
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u", Locale: "zh-CN"}},
+		Settings: &stubSettings{cur: "CNY"},
+	}, bot, func() string { return "zh-CN" })
+
+	// 进入充值并输入金额（单 epusdt 渠道直接创建充值）
+	if err := svc.enterRecharge(context.Background(), "tok", 100, &webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("enterRecharge err: %v", err)
+	}
+	view := svc.snapshot(100)
+	if err := svc.handleRechargeAmount(context.Background(), "tok", view, "100", &webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("handleRechargeAmount err: %v", err)
+	}
+	last := bot.sent[len(bot.sent)-1]
+	for _, want := range []string{"TLq32V4saMHPS71juNAZ6KBmhTTSLCRkp6", "6.98", "USDT", "TRC20", "WR2"} {
+		if !containsStr(last, want) {
+			t.Fatalf("expected %q in recharge message, got: %v", want, last)
+		}
+	}
+	if !containsStr(last, "```") {
+		t.Fatalf("expected address in code block, got: %v", last)
+	}
+	if containsStr(last, "100.00 CNY") {
+		t.Fatalf("store currency line should be removed, got: %v", last)
+	}
+	markup := bot.markups[len(bot.markups)-1]
+	if !keyboardContains(markup, "返回主页") {
+		t.Fatalf("expected exit home button, got: %+v", markup)
+	}
+	if len(bot.photos) != 1 {
+		t.Fatalf("expected 1 QR photo, got: %d", len(bot.photos))
+	}
+
+	// 付款页展示后会话已清空：再次输入数字应未被消费（回退主菜单），且不重复创建充值订单。
+	handled, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, Text: "200"},
+	})
+	if err != nil {
+		t.Fatalf("second input err: %v", err)
+	}
+	if handled {
+		t.Fatalf("expected second input NOT handled after payment page")
+	}
+	if rechargeStub.calls != 1 {
+		t.Fatalf("expected exactly 1 recharge order, got %d", rechargeStub.calls)
 	}
 }
 

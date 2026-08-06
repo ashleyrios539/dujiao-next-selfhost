@@ -29,6 +29,8 @@ type BotAPIClient interface {
 	SetWebhook(ctx context.Context, botToken, webhookURL, secretToken string) error
 	// DeleteWebhook 删除 Telegram webhook。
 	DeleteWebhook(ctx context.Context, botToken string) error
+	// SendPhotoBytes 通过 sendPhoto 发送内存中的图片文件（如收款地址二维码 PNG）。
+	SendPhotoBytes(ctx context.Context, botToken, chatID, fileName string, content []byte, caption string, options SendMessageOptions) error
 }
 
 // SendMessageOptions 是发送消息的可选参数。

@@ -1,13 +1,17 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image/png"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/boombuler/barcode"
+	"github.com/boombuler/barcode/qr"
 	settingsmessaging "github.com/dujiao-next/internal/modules/settings/schema/messaging"
 	"github.com/dujiao-next/internal/modules/telegram/webhook/contract"
 	webhookdomain "github.com/dujiao-next/internal/modules/telegram/webhook/domain"
@@ -65,6 +69,8 @@ const (
 	cbBackCountry    = "shop:back:country"
 	cbCancel         = "shop:cancel"
 	cbHelpBuy        = "shop:help"
+	// cbMenu 非 shop: 前缀，由主 Service 处理并回退到主菜单（付款页「返回主页」按钮）。
+	cbMenu = "menu"
 )
 
 // purchaseSessionTTL 购买会话空闲过期时间：超过该时长无交互则自动清理，避免会话无限驻留内存。
@@ -1184,13 +1190,10 @@ func (s *purchaseService) renderPaymentResult(ctx context.Context, token string,
 	}
 
 	var sb strings.Builder
-	// epusdt 渠道：直接在聊天内展示应付 USDT 金额与收款地址。
+	// epusdt 渠道：直接在聊天内展示应付 USDT 金额与收款地址（只保留 USDT 一行，避免币种混淆）。
 	if result.ReceiveAddress != "" {
 		sb.WriteString("🪙 " + localizedText(purchaseTexts["purchase.epusdt_title"], loc) + "\n\n")
 		sb.WriteString(localizedText(purchaseTexts["purchase.order_no"], loc) + " " + created.OrderNo + "\n")
-		if result.OnlinePayAmount != "" && result.OnlinePayAmount != "0" {
-			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_payable"], loc) + " " + formatAmount(result.OnlinePayAmount, created.Currency) + "\n")
-		}
 		if result.PayAmount != "" && result.PayAmount != "0" {
 			token := strings.ToUpper(result.Token)
 			if token == "" {
@@ -1199,7 +1202,8 @@ func (s *purchaseService) renderPaymentResult(ctx context.Context, token string,
 			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_pay_amount"], loc) + " " + formatCryptoAmount(result.PayAmount) + " " + token + "\n")
 		}
 		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.epusdt_address"], loc) + "\n")
-		sb.WriteString("`" + result.ReceiveAddress + "`\n")
+		sb.WriteString("```\n" + result.ReceiveAddress + "\n```\n")
+		sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_copy_hint"], loc) + "\n")
 		network := strings.ToUpper(result.Network)
 		if network == "TRON" {
 			network = "TRON（TRC20）"
@@ -1219,9 +1223,16 @@ func (s *purchaseService) renderPaymentResult(ctx context.Context, token string,
 			rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.pay_open_link"], loc), URL: result.PayURL}})
 		}
 		rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.pay_check"], loc), CallbackData: cbPayCheck + created.OrderNo}})
-		rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.orders_title"], loc), CallbackData: cbOrders}})
-		return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
-			contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: inlineKeyboard{InlineKeyboard: rows}})
+		rows = append(rows, []inlineButton{
+			{Text: localizedText(purchaseTexts["purchase.orders_title"], loc), CallbackData: cbOrders},
+			{Text: localizedText(purchaseTexts["purchase.exit_home"], loc), CallbackData: cbMenu},
+		})
+		if err := s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+			contract.SendMessageOptions{DisableWebPagePreview: true, ParseMode: "Markdown", ReplyMarkup: inlineKeyboard{InlineKeyboard: rows}}); err != nil {
+			return err
+		}
+		// 附带收款地址二维码（进程内生成，失败静默跳过，不影响付款信息展示）。
+		return s.sendAddressQR(ctx, token, chatID, loc, result.ReceiveAddress)
 	}
 
 	sb.WriteString(localizedText(purchaseTexts["purchase.paid_title"], loc) + "\n\n")
@@ -1768,7 +1779,7 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.orders_back":        {"zh-CN": "⬅️ 返回订单列表", "zh-TW": "⬅️ 返回訂單列表", "en-US": "⬅️ Back to orders"},
 	"purchase.lang_switched":      {"zh-CN": "🌐 语言已切换为中文。", "zh-TW": "🌐 語言已切換為中文。", "en-US": "🌐 Language switched to English."},
 	"purchase.recharge_title":     {"zh-CN": "💳 充值", "zh-TW": "💳 儲值", "en-US": "💳 Recharge"},
-	"purchase.recharge_amount_prompt": {"zh-CN": "请输入充值金额（如 100 或 50.5）：", "zh-TW": "請輸入儲值金額（如 100 或 50.5）：", "en-US": "Enter recharge amount (e.g. 100 or 50.5):"},
+	"purchase.recharge_amount_prompt": {"zh-CN": "请输入充值 USDT 金额（如 100 或 50.5）：", "zh-TW": "請輸入儲值 USDT 金額（如 100 或 50.5）：", "en-US": "Enter recharge amount in USDT (e.g. 100 or 50.5):"},
 	"purchase.recharge_amount_invalid": {"zh-CN": "金额无效，请输入大于 0 的数字。", "zh-TW": "金額無效，請輸入大於 0 的數字。", "en-US": "Invalid amount, enter a number greater than 0."},
 	"purchase.recharge_payable":   {"zh-CN": "应付", "zh-TW": "應付", "en-US": "Payable"},
 	"purchase.recharge_status":    {"zh-CN": "充值状态", "zh-TW": "儲值狀態", "en-US": "Recharge status"},
@@ -1783,6 +1794,9 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.epusdt_payable":    {"zh-CN": "应付", "zh-TW": "應付", "en-US": "Payable"},
 	"purchase.epusdt_pay_amount": {"zh-CN": "应付 USDT", "zh-TW": "應付 USDT", "en-US": "Payable USDT"},
 	"purchase.epusdt_address":    {"zh-CN": "收款地址（TRC20）", "zh-TW": "收款地址（TRC20）", "en-US": "Receive address (TRC20)"},
+	"purchase.epusdt_copy_hint":  {"zh-CN": "👆 点击上方地址即可一键复制。", "zh-TW": "👆 點擊上方地址即可一鍵複製。", "en-US": "👆 Tap the address above to copy it."},
+	"purchase.epusdt_qr_hint":    {"zh-CN": "📲 USDT（TRC20）收款二维码，扫码转账。", "zh-TW": "📲 USDT（TRC20）收款 QR Code，掃碼轉帳。", "en-US": "📲 USDT (TRC20) receive QR code, scan to pay."},
+	"purchase.exit_home":         {"zh-CN": "🏠 返回主页", "zh-TW": "🏠 返回主頁", "en-US": "🏠 Home"},
 	"purchase.epusdt_network":    {"zh-CN": "网络", "zh-TW": "網路", "en-US": "Network"},
 	"purchase.epusdt_expires":    {"zh-CN": "过期时间", "zh-TW": "過期時間", "en-US": "Expires at"},
 	"purchase.epusdt_hint":       {"zh-CN": "请将应付 USDT 转账至上方地址，支付成功后订单自动发货，卡密将以 txt 文件推送到本对话。", "zh-TW": "請將應付 USDT 轉帳至上方地址，支付成功後訂單自動發貨，卡密將以 txt 檔案推送到本對話。", "en-US": "Transfer the payable USDT to the address above. Once paid, your order is fulfilled automatically and cards are delivered here as a txt file."},
@@ -1990,6 +2004,39 @@ func truncateDescription(desc string) string {
 	return desc[:maxLen] + "\n…"
 }
 
+// sendAddressQR 生成并发送收款地址二维码图片（best-effort：生成或发送失败一律静默忽略，
+// 不阻断已展示的付款/充值信息，也不让 webhook 因二维码失败而重试导致重复下单）。
+func (s *purchaseService) sendAddressQR(ctx context.Context, token string, chatID int64, loc, address string) error {
+	addr := strings.TrimSpace(address)
+	if addr == "" {
+		return nil
+	}
+	pngBytes, err := buildQRCodePNG(addr, 360)
+	if err != nil {
+		return nil
+	}
+	_ = s.botapi.SendPhotoBytes(ctx, token, fmt.Sprintf("%d", chatID), "usdt_qrcode.png", pngBytes,
+		localizedText(purchaseTexts["purchase.epusdt_qr_hint"], loc), contract.SendMessageOptions{})
+	return nil
+}
+
+// buildQRCodePNG 用 boombuler/barcode 在进程内生成二维码 PNG 字节，不依赖外部二维码服务。
+func buildQRCodePNG(content string, size int) ([]byte, error) {
+	code, err := qr.Encode(strings.TrimSpace(content), qr.M, qr.Auto)
+	if err != nil {
+		return nil, err
+	}
+	code, err = barcode.Scale(code, size, size)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, code); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 // toggleLanguage 在中/英之间切换，并持久化到商城账号。
 func (s *purchaseService) toggleLanguage(ctx context.Context, token string, chatID int64, from webhookdomain.User) error {
 	if s.ports.Identity == nil {
@@ -2142,14 +2189,11 @@ func (s *purchaseService) createRechargeWithChannel(ctx context.Context, token s
 	if err != nil {
 		return s.sendError(ctx, token, chatID, err, "purchase.error")
 	}
-	// epusdt 渠道：直接在聊天内展示充值 USDT 金额与收款地址。
+	// epusdt 渠道：直接在聊天内展示充值 USDT 金额与收款地址（只保留 USDT 一行，避免币种混淆）。
 	if recharge.ReceiveAddress != "" {
 		var sb strings.Builder
 		sb.WriteString("🪙 " + localizedText(purchaseTexts["purchase.recharge_title"], loc) + "\n\n")
 		sb.WriteString("🆔 " + recharge.RechargeNo + "\n")
-		if recharge.PayableAmount != "" && recharge.PayableAmount != "0" {
-			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_payable"], loc) + " " + formatAmount(recharge.PayableAmount, recharge.Currency) + "\n")
-		}
 		if recharge.PayAmount != "" && recharge.PayAmount != "0" {
 			token := strings.ToUpper(recharge.Token)
 			if token == "" {
@@ -2158,7 +2202,8 @@ func (s *purchaseService) createRechargeWithChannel(ctx context.Context, token s
 			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_pay_amount"], loc) + " " + formatCryptoAmount(recharge.PayAmount) + " " + token + "\n")
 		}
 		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.epusdt_address"], loc) + "\n")
-		sb.WriteString("`" + recharge.ReceiveAddress + "`\n")
+		sb.WriteString("```\n" + recharge.ReceiveAddress + "\n```\n")
+		sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_copy_hint"], loc) + "\n")
 		network := strings.ToUpper(recharge.Network)
 		if network == "TRON" {
 			network = "TRON（TRC20）"
@@ -2169,13 +2214,24 @@ func (s *purchaseService) createRechargeWithChannel(ctx context.Context, token s
 		}
 		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.recharge_epusdt_hint"], loc))
 
+		// 展示付款页后立即清空会话：避免用户再次输入数字时重复创建充值订单，
+		// 之后任意文本输入都会回退到主菜单（/start 页面）。
+		s.mu.Lock()
+		delete(s.sessions, chatID)
+		s.mu.Unlock()
+
 		rows := [][]inlineButton{}
 		if recharge.PayURL != "" {
 			rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.pay_open_link"], loc), URL: recharge.PayURL}})
 		}
 		rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.recharge_check"], loc), CallbackData: cbRechargeCheck + recharge.RechargeNo}})
-		return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
-			contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: inlineKeyboard{InlineKeyboard: rows}})
+		rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.exit_home"], loc), CallbackData: cbMenu}})
+		if err := s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+			contract.SendMessageOptions{DisableWebPagePreview: true, ParseMode: "Markdown", ReplyMarkup: inlineKeyboard{InlineKeyboard: rows}}); err != nil {
+			return err
+		}
+		// 附带收款地址二维码（进程内生成，失败静默跳过，不影响充值信息展示）。
+		return s.sendAddressQR(ctx, token, chatID, loc, recharge.ReceiveAddress)
 	}
 
 	var sb strings.Builder
@@ -2194,6 +2250,10 @@ func (s *purchaseService) createRechargeWithChannel(ctx context.Context, token s
 			},
 		}}
 	}
+	// 非 epusdt 渠道同样在展示充值页后清空会话，防止重复充值。
+	s.mu.Lock()
+	delete(s.sessions, chatID)
+	s.mu.Unlock()
 	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
 		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: markup})
 }

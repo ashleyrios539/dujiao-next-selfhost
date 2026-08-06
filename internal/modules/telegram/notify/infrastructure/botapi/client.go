@@ -182,6 +182,54 @@ func (s *Client) SendDocumentBytes(ctx context.Context, botToken, chatID, fileNa
 	return s.doRequest(req)
 }
 
+// SendPhotoBytes 通过 sendPhoto 发送内存中的图片文件（如收款地址二维码 PNG）。
+func (s *Client) SendPhotoBytes(ctx context.Context, botToken, chatID, fileName string, content []byte, caption string, options SendMessageOptions) error {
+	chatID = strings.TrimSpace(chatID)
+	botToken = strings.TrimSpace(botToken)
+	fileName = strings.TrimSpace(fileName)
+	if chatID == "" || botToken == "" || len(content) == 0 {
+		return notifycontract.ErrNotifySendFailed
+	}
+	if fileName == "" {
+		fileName = "photo.png"
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	if err := writer.WriteField("chat_id", chatID); err != nil {
+		return err
+	}
+	if caption = strings.TrimSpace(caption); caption != "" {
+		if err := writer.WriteField("caption", caption); err != nil {
+			return err
+		}
+	}
+	if parseMode := strings.TrimSpace(options.ParseMode); parseMode != "" {
+		if err := writer.WriteField("parse_mode", parseMode); err != nil {
+			return err
+		}
+	}
+	part, err := writer.CreateFormFile("photo", fileName)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(part, bytes.NewReader(content)); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	requestURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendPhoto", botToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, &body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return s.doRequest(req)
+}
+
 func (s *Client) sendJSONRequest(ctx context.Context, botToken, method string, payload map[string]interface{}) error {
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
