@@ -48,6 +48,20 @@ reseller:
 
 约定：`web_visible=false` 只在**网站前台**隐藏（列表+详情），管理端、订单、bot 均不受影响；`bot_visible=false` 只在 bot `/shop` 隐藏。价格/测活/挑卡配置两端共用同一份，无渠道专属定价。
 
+### Telegram Bot 直连 epusdt 支付 + txt 发货（本分支后续新增）
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| epusdt 网关 | `internal/modules/payment/infrastructure/gateway/epusdt/epusdt.go` | `CreateResult` 新增 `ReceiveAddress/ActualAmount/Token/Network/ExpirationTime`，从 GMPay `create-transaction` 响应 `data` 提取（`receive_address`/`actual_amount`/`token`/`network`/`expiration_time`） |
+| epusdt 适配 | `internal/modules/payment/infrastructure/gateway/adapters/epusdt/adapter.go` | 把上述字段写入 `GatewayCreateResult.Payload` **顶层**（`receive_address` 等），`token`/`network` 缺失时回退渠道配置 |
+| bot 支付端口 | `internal/app/container/telegram_purchase_ports.go` | `fillEpusdtPaymentInfo`/`fillEpusdtRechargeInfo` 从 `Payment.ProviderPayload` 读取 epusdt 付款字段透传给 bot；`payloadString`/`payloadInt64` 为通用读取助手 |
+| bot 在线支付 | `internal/modules/telegram/webhook/application/purchase_service.go` | `payOnline` 只走 epusdt 渠道（`filterEpusdtChannels` 匹配 `epusdt/usdt/usdt-trc20/trx/tron/trc20`），创建订单后在聊天内直接展示应付 USDT、TRC20 收款地址、网络、过期时间；新增 `shop:paycheck:` 刷新支付状态回调 |
+| bot 充值 | 同上 | `/recharge` 同样只走 epusdt，聊天内展示充值 USDT 金额与收款地址 |
+| bot 商品简介 | `internal/app/container/telegram_purchase_ports.go` + `purchase_service.go` | `ShopProduct.Description` 由 `DescriptionJSON` 填充，`renderDetail` 展示（与网站同源自动同步） |
+| txt 发货 | `internal/modules/telegram/notify/infrastructure/botapi/client.go` + `internal/app/container/native_bot_notifier.go` | 新增 `SendDocumentBytes`（sendDocument multipart 内存文件）；发货后把卡密 payload 以 `卡密_<订单号>.txt` 文件推送到用户私聊 |
+
+要点：epusdt 付款关键字段放在 `ProviderPayload` **顶层**（非 `data` 子对象），bot 端读取不依赖具体网关响应结构；GMPay 创建响应可能不含 `network`，adapter 已回退渠道配置 `network`（tron）。
+
 ### 架构约束（必须遵守，改代码会触发失败）
 
 - **文件预算**：`internal/architecture/reseller_vertical_slice_test.go` 限制每个包的文件数
