@@ -136,6 +136,52 @@ func (s *Client) sendMultipartMedia(ctx context.Context, botToken, method, field
 	return s.doRequest(req)
 }
 
+// SendDocumentBytes 通过 sendDocument 发送内存中的文件内容（如卡密 txt）。
+// 用于订单发货后把卡密以 txt 文件推送到用户私聊，避免超长文本消息被截断。
+func (s *Client) SendDocumentBytes(ctx context.Context, botToken, chatID, fileName string, content []byte, caption string, options SendMessageOptions) error {
+	chatID = strings.TrimSpace(chatID)
+	botToken = strings.TrimSpace(botToken)
+	fileName = strings.TrimSpace(fileName)
+	if chatID == "" || botToken == "" || len(content) == 0 {
+		return notifycontract.ErrNotifySendFailed
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	if err := writer.WriteField("chat_id", chatID); err != nil {
+		return err
+	}
+	if caption = strings.TrimSpace(caption); caption != "" {
+		if err := writer.WriteField("caption", caption); err != nil {
+			return err
+		}
+	}
+	if parseMode := strings.TrimSpace(options.ParseMode); parseMode != "" {
+		if err := writer.WriteField("parse_mode", parseMode); err != nil {
+			return err
+		}
+	}
+	part, err := writer.CreateFormFile("document", fileName)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(part, bytes.NewReader(content)); err != nil {
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return err
+	}
+
+	requestURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendDocument", botToken)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, &body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return s.doRequest(req)
+}
+
 func (s *Client) sendJSONRequest(ctx context.Context, botToken, method string, payload map[string]interface{}) error {
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {

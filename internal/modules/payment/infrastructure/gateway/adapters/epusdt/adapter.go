@@ -82,11 +82,34 @@ func (a *epusdtAdapter) CreatePayment(ctx context.Context, raw jsonmap.JSON, inp
 		return nil, mapEpusdtError(err)
 	}
 
+	// 在 Payload 顶层写入 epusdt 付款关键字段（receive_address / actual_amount / token / network / expiration_time），
+	// 供 Telegram bot 等渠道在聊天内直接展示付款金额与收款地址，无需跳转收银台。
+	// token/network 缺失时回退到渠道配置（真实 GMPay 创建响应可能不返回 network）。
+	payload := jsonmap.JSON{}
+	if result.Raw != nil {
+		for k, v := range result.Raw {
+			payload[k] = v
+		}
+	}
+	payload["receive_address"] = result.ReceiveAddress
+	payload["actual_amount"] = result.ActualAmount
+	token := strings.TrimSpace(result.Token)
+	if token == "" {
+		token = strings.TrimSpace(cfg.Token)
+	}
+	network := strings.TrimSpace(result.Network)
+	if network == "" {
+		network = strings.TrimSpace(cfg.Network)
+	}
+	payload["token"] = token
+	payload["network"] = network
+	payload["expiration_time"] = result.ExpirationTime
+
 	return &paymentcontract.GatewayCreateResult{
 		ProviderRef:        result.TradeID,
 		RedirectURL:        result.PaymentURL,
 		QRCodeURL:          result.PaymentURL, // epusdt 是 USDT 网关，PaymentURL 同时用于跳转和 QR 展示
-		Payload:            jsonmap.JSON(result.Raw),
+		Payload:            payload,
 		DisplayChannelType: epusdtDisplayChannelType(cfg),
 	}, nil
 }

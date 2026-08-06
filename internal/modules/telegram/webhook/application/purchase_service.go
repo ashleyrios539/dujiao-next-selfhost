@@ -48,6 +48,7 @@ const (
 	cbPayBalance     = "shop:pay:balance"
 	cbPayOnline      = "shop:pay:online"
 	cbPayChannel     = "shop:pay:ch:"
+	cbPayCheck       = "shop:paycheck:"
 	cbBinStock       = "shop:binstock"
 	cbWallet         = "shop:wallet"
 	cbOrders         = "shop:orders"
@@ -286,6 +287,8 @@ func (s *purchaseService) handleCallback(ctx context.Context, token string, cb *
 		return true, s.payOnline(ctx, token, chatID)
 	case strings.HasPrefix(data, cbPayChannel):
 		return true, s.selectPayChannel(ctx, token, chatID, strings.TrimPrefix(data, cbPayChannel))
+	case strings.HasPrefix(data, cbPayCheck):
+		return true, s.checkOrderPaid(ctx, token, chatID, strings.TrimPrefix(data, cbPayCheck), cb.From)
 	case data == cbBinStock:
 		return true, s.enterBinStock(ctx, token, chatID)
 	case data == cbWallet:
@@ -530,6 +533,12 @@ func (s *purchaseService) renderDetail(ctx context.Context, token string, chatID
 
 	var sb strings.Builder
 	sb.WriteString("🛍️ " + product.Title + "\n\n")
+
+	// 商品简介（与网站商品描述同源，自动同步）
+	if desc := strings.TrimSpace(product.Description); desc != "" {
+		sb.WriteString("📝 " + s.t(view, "purchase.product_desc") + "\n")
+		sb.WriteString(truncateDescription(desc) + "\n\n")
+	}
 
 	// 价格区
 	sb.WriteString(s.t(view, "purchase.price") + " " + formatAmount(product.PriceAmount, product.Currency) + "\n")
@@ -1081,7 +1090,8 @@ func (s *purchaseService) payWithBalance(ctx context.Context, token string, chat
 	return s.renderPaymentResult(ctx, token, chatID, created, result)
 }
 
-// payOnline 发起在线支付：先查可用渠道，多渠道时让用户选择，单渠道直接支付。
+// payOnline 发起在线支付：仅使用 epusdt（USDT/TRC20）渠道，多渠道时让用户选择，单渠道直接支付。
+// 创建订单后直接在聊天内展示应付金额与收款地址，无需跳转收银台。
 func (s *purchaseService) payOnline(ctx context.Context, token string, chatID int64) error {
 	if s.ports.Payments == nil {
 		return s.sendError(ctx, token, chatID, nil, "purchase.error")
@@ -1090,13 +1100,14 @@ func (s *purchaseService) payOnline(ctx context.Context, token string, chatID in
 	if err != nil {
 		return s.sendError(ctx, token, chatID, err, "purchase.error")
 	}
-	if len(channels) == 0 {
-		return s.sendError(ctx, token, chatID, nil, "purchase.no_channel")
+	epusdtChannels := filterEpusdtChannels(channels)
+	if len(epusdtChannels) == 0 {
+		return s.sendError(ctx, token, chatID, nil, "purchase.no_epusdt")
 	}
-	if len(channels) == 1 {
-		return s.createOnlinePayment(ctx, token, chatID, channels[0].ID)
+	if len(epusdtChannels) == 1 {
+		return s.createOnlinePayment(ctx, token, chatID, epusdtChannels[0].ID)
 	}
-	// 多个渠道：展示选择键盘（此时尚未创建订单）。
+	// 多个 epusdt 渠道：展示选择键盘（此时尚未创建订单）。
 	view := s.snapshot(chatID)
 	loc := "zh-CN"
 	if view != nil {
@@ -1109,7 +1120,19 @@ func (s *purchaseService) payOnline(ctx context.Context, token string, chatID in
 	s.mu.Unlock()
 	msg := localizedText(purchaseTexts["purchase.select_channel_title"], loc)
 	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
-		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.channelKeyboard(channels, loc)})
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.channelKeyboard(epusdtChannels, loc)})
+}
+
+// filterEpusdtChannels 仅保留 epusdt（USDT/TRC20）在线支付渠道。
+func filterEpusdtChannels(channels []contract.ShopPaymentChannel) []contract.ShopPaymentChannel {
+	out := make([]contract.ShopPaymentChannel, 0, len(channels))
+	for _, ch := range channels {
+		switch strings.ToLower(strings.TrimSpace(ch.ChannelType)) {
+		case "epusdt", "usdt", "usdt-trc20", "trx", "tron", "trc20":
+			out = append(out, ch)
+		}
+	}
+	return out
 }
 
 // selectPayChannel 用户选定在线支付渠道后发起支付。
@@ -1161,6 +1184,46 @@ func (s *purchaseService) renderPaymentResult(ctx context.Context, token string,
 	}
 
 	var sb strings.Builder
+	// epusdt 渠道：直接在聊天内展示应付 USDT 金额与收款地址。
+	if result.ReceiveAddress != "" {
+		sb.WriteString("🪙 " + localizedText(purchaseTexts["purchase.epusdt_title"], loc) + "\n\n")
+		sb.WriteString(localizedText(purchaseTexts["purchase.order_no"], loc) + " " + created.OrderNo + "\n")
+		if result.OnlinePayAmount != "" && result.OnlinePayAmount != "0" {
+			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_payable"], loc) + " " + formatAmount(result.OnlinePayAmount, created.Currency) + "\n")
+		}
+		if result.PayAmount != "" && result.PayAmount != "0" {
+			token := strings.ToUpper(result.Token)
+			if token == "" {
+				token = "USDT"
+			}
+			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_pay_amount"], loc) + " " + formatCryptoAmount(result.PayAmount) + " " + token + "\n")
+		}
+		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.epusdt_address"], loc) + "\n")
+		sb.WriteString("`" + result.ReceiveAddress + "`\n")
+		network := strings.ToUpper(result.Network)
+		if network == "TRON" {
+			network = "TRON（TRC20）"
+		}
+		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.epusdt_network"], loc) + " " + network + "\n")
+		if result.ExpiresAt != "" {
+			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_expires"], loc) + " " + result.ExpiresAt + "\n")
+		}
+		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.epusdt_hint"], loc))
+
+		s.mu.Lock()
+		delete(s.sessions, chatID)
+		s.mu.Unlock()
+
+		rows := [][]inlineButton{}
+		if result.PayURL != "" {
+			rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.pay_open_link"], loc), URL: result.PayURL}})
+		}
+		rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.pay_check"], loc), CallbackData: cbPayCheck + created.OrderNo}})
+		rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.orders_title"], loc), CallbackData: cbOrders}})
+		return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+			contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: inlineKeyboard{InlineKeyboard: rows}})
+	}
+
 	sb.WriteString(localizedText(purchaseTexts["purchase.paid_title"], loc) + "\n\n")
 	sb.WriteString(localizedText(purchaseTexts["purchase.order_no"], loc) + " " + created.OrderNo + "\n")
 	if result.OrderPaid {
@@ -1199,6 +1262,46 @@ func (s *purchaseService) renderPaymentResult(ctx context.Context, token string,
 	}
 	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
 		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: markup})
+}
+
+// checkOrderPaid 查询订单支付/发货状态（epusdt 付款后用户点击「刷新支付状态」）。
+func (s *purchaseService) checkOrderPaid(ctx context.Context, token string, chatID int64, orderNo string, from webhookdomain.User) error {
+	if s.ports.OrderReader == nil {
+		return s.sendError(ctx, token, chatID, nil, "purchase.unavailable")
+	}
+	user, err := s.resolveUser(ctx, from)
+	if err != nil || user == nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.identity_failed")
+	}
+	loc := s.locale()
+	if user.Locale != "" {
+		loc = resolveLocale(user.Locale)
+	}
+	detail, err := s.ports.OrderReader.GetOrderByOrderNo(ctx, user.ID, orderNo)
+	if err != nil {
+		return s.sendError(ctx, token, chatID, err, "purchase.error")
+	}
+	var sb strings.Builder
+	sb.WriteString("🧾 " + localizedText(purchaseTexts["purchase.order_detail_title"], loc) + "\n\n")
+	sb.WriteString("🆔 " + detail.OrderNo + "\n")
+	sb.WriteString(localizedText(purchaseTexts["purchase.order_status"], loc) + "：" + orderStatusText(detail.Status, loc) + "\n")
+	sb.WriteString(localizedText(purchaseTexts["purchase.total"], loc) + " " + formatAmount(detail.TotalAmount, detail.Currency) + "\n")
+	paid := detail.Status == "paid" || detail.Status == "delivered" || detail.Status == "completed" || detail.Status == "fulfilling"
+	if paid {
+		sb.WriteString("\n✅ " + localizedText(purchaseTexts["purchase.pay_paid"], loc))
+		if detail.Fulfillment != nil && strings.TrimSpace(detail.Fulfillment.Payload) != "" {
+			sb.WriteString("\n\n" + localizedText(purchaseTexts["purchase.order_cards"], loc) + "：\n")
+			sb.WriteString(truncatePayload(detail.Fulfillment.Payload))
+		}
+	} else {
+		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.pay_pending"], loc))
+	}
+	rows := [][]inlineButton{
+		{{Text: localizedText(purchaseTexts["purchase.pay_check"], loc), CallbackData: cbPayCheck + detail.OrderNo}},
+		{{Text: localizedText(purchaseTexts["purchase.orders_title"], loc), CallbackData: cbOrders}},
+	}
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: inlineKeyboard{InlineKeyboard: rows}})
 }
 
 func (s *purchaseService) cancel(ctx context.Context, token string, chatID int64) error {
@@ -1544,6 +1647,15 @@ func formatAmount(amount, currency string) string {
 	return dec.Round(2).StringFixed(2) + " " + strings.TrimSpace(currency)
 }
 
+// formatCryptoAmount 格式化加密币金额：最多保留 6 位小数并去除尾零（如 USDT）。
+func formatCryptoAmount(amount string) string {
+	dec, err := decimal.NewFromString(strings.TrimSpace(amount))
+	if err != nil || dec.IsZero() {
+		return strings.TrimSpace(amount)
+	}
+	return dec.Truncate(6).String()
+}
+
 func addAmounts(a, b string) string {
 	da, err1 := decimal.NewFromString(strings.TrimSpace(a))
 	db, err2 := decimal.NewFromString(strings.TrimSpace(b))
@@ -1666,6 +1778,19 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.recharge_paid":      {"zh-CN": "已到账 ✅", "zh-TW": "已入帳 ✅", "en-US": "Credited ✅"},
 	"purchase.recharge_failed":    {"zh-CN": "失败/已过期", "zh-TW": "失敗/已過期", "en-US": "Failed/Expired"},
 	"purchase.wallet_recharge_btn": {"zh-CN": "💳 充值", "zh-TW": "💳 儲值", "en-US": "💳 Recharge"},
+	"purchase.no_epusdt":         {"zh-CN": "未配置可用的 USDT 支付渠道，请稍后再试或联系客服。", "zh-TW": "未配置可用的 USDT 支付管道，請稍後再試或聯絡客服。", "en-US": "No USDT payment channel configured right now."},
+	"purchase.epusdt_title":      {"zh-CN": "USDT 在线支付", "zh-TW": "USDT 線上支付", "en-US": "USDT Online Payment"},
+	"purchase.epusdt_payable":    {"zh-CN": "应付", "zh-TW": "應付", "en-US": "Payable"},
+	"purchase.epusdt_pay_amount": {"zh-CN": "应付 USDT", "zh-TW": "應付 USDT", "en-US": "Payable USDT"},
+	"purchase.epusdt_address":    {"zh-CN": "收款地址（TRC20）", "zh-TW": "收款地址（TRC20）", "en-US": "Receive address (TRC20)"},
+	"purchase.epusdt_network":    {"zh-CN": "网络", "zh-TW": "網路", "en-US": "Network"},
+	"purchase.epusdt_expires":    {"zh-CN": "过期时间", "zh-TW": "過期時間", "en-US": "Expires at"},
+	"purchase.epusdt_hint":       {"zh-CN": "请将应付 USDT 转账至上方地址，支付成功后订单自动发货，卡密将以 txt 文件推送到本对话。", "zh-TW": "請將應付 USDT 轉帳至上方地址，支付成功後訂單自動發貨，卡密將以 txt 檔案推送到本對話。", "en-US": "Transfer the payable USDT to the address above. Once paid, your order is fulfilled automatically and cards are delivered here as a txt file."},
+	"purchase.recharge_epusdt_hint": {"zh-CN": "请将应付 USDT 转账至上方地址，支付成功后自动到账余额。", "zh-TW": "請將應付 USDT 轉帳至上方地址，支付成功後自動入帳餘額。", "en-US": "Transfer the payable USDT to the address above. Your balance is credited automatically once paid."},
+	"purchase.pay_check":         {"zh-CN": "🔄 刷新支付状态", "zh-TW": "🔄 重新整理付款狀態", "en-US": "🔄 Refresh payment status"},
+	"purchase.pay_pending":       {"zh-CN": "支付处理中或未到账，请确认已向收款地址转账后点击刷新。", "zh-TW": "付款處理中或未入帳，請確認已向收款地址轉帳後點擊重新整理。", "en-US": "Payment pending. Confirm the transfer to the address and tap refresh."},
+	"purchase.pay_paid":          {"zh-CN": "支付成功，订单已处理。", "zh-TW": "付款成功，訂單已處理。", "en-US": "Payment successful, order processed."},
+	"purchase.product_desc":      {"zh-CN": "商品简介", "zh-TW": "商品簡介", "en-US": "Description"},
 	"order.status.pending_payment":     {"zh-CN": "待支付", "zh-TW": "待支付", "en-US": "Pending payment"},
 	"order.status.paid":                {"zh-CN": "已支付", "zh-TW": "已支付", "en-US": "Paid"},
 	"order.status.fulfilling":          {"zh-CN": "发货中", "zh-TW": "發貨中", "en-US": "Fulfilling"},
@@ -1855,6 +1980,16 @@ func truncatePayload(payload string) string {
 	return payload[:maxLen] + "\n…（已截断）"
 }
 
+// truncateDescription 截断商品简介到安全长度。
+func truncateDescription(desc string) string {
+	const maxLen = 1000
+	desc = strings.TrimSpace(desc)
+	if len(desc) <= maxLen {
+		return desc
+	}
+	return desc[:maxLen] + "\n…"
+}
+
 // toggleLanguage 在中/英之间切换，并持久化到商城账号。
 func (s *purchaseService) toggleLanguage(ctx context.Context, token string, chatID int64, from webhookdomain.User) error {
 	if s.ports.Identity == nil {
@@ -1933,8 +2068,9 @@ func (s *purchaseService) handleRechargeAmount(ctx context.Context, token string
 	if err != nil {
 		return s.sendError(ctx, token, view.chatID, err, "purchase.error")
 	}
-	if len(channels) == 0 {
-		return s.sendError(ctx, token, view.chatID, nil, "purchase.no_channel")
+	epusdtChannels := filterEpusdtChannels(channels)
+	if len(epusdtChannels) == 0 {
+		return s.sendError(ctx, token, view.chatID, nil, "purchase.no_epusdt")
 	}
 	// 保存金额到会话。
 	s.mu.Lock()
@@ -1942,8 +2078,8 @@ func (s *purchaseService) handleRechargeAmount(ctx context.Context, token string
 		sess.rechargeAmount = amount
 	}
 	s.mu.Unlock()
-	if len(channels) == 1 {
-		return s.createRechargeWithChannel(ctx, token, view.chatID, fmt.Sprintf("%d", channels[0].ID), *from)
+	if len(epusdtChannels) == 1 {
+		return s.createRechargeWithChannel(ctx, token, view.chatID, fmt.Sprintf("%d", epusdtChannels[0].ID), *from)
 	}
 	// 多渠道：展示渠道选择。
 	s.mu.Lock()
@@ -1953,7 +2089,7 @@ func (s *purchaseService) handleRechargeAmount(ctx context.Context, token string
 	s.mu.Unlock()
 	msg := localizedText(purchaseTexts["purchase.select_channel_title"], loc)
 	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", view.chatID), msg,
-		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.rechargeChannelKeyboard(channels, loc)})
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.rechargeChannelKeyboard(epusdtChannels, loc)})
 }
 
 // rechargeChannelKeyboard 充值渠道选择键盘。
@@ -2006,6 +2142,42 @@ func (s *purchaseService) createRechargeWithChannel(ctx context.Context, token s
 	if err != nil {
 		return s.sendError(ctx, token, chatID, err, "purchase.error")
 	}
+	// epusdt 渠道：直接在聊天内展示充值 USDT 金额与收款地址。
+	if recharge.ReceiveAddress != "" {
+		var sb strings.Builder
+		sb.WriteString("🪙 " + localizedText(purchaseTexts["purchase.recharge_title"], loc) + "\n\n")
+		sb.WriteString("🆔 " + recharge.RechargeNo + "\n")
+		if recharge.PayableAmount != "" && recharge.PayableAmount != "0" {
+			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_payable"], loc) + " " + formatAmount(recharge.PayableAmount, recharge.Currency) + "\n")
+		}
+		if recharge.PayAmount != "" && recharge.PayAmount != "0" {
+			token := strings.ToUpper(recharge.Token)
+			if token == "" {
+				token = "USDT"
+			}
+			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_pay_amount"], loc) + " " + formatCryptoAmount(recharge.PayAmount) + " " + token + "\n")
+		}
+		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.epusdt_address"], loc) + "\n")
+		sb.WriteString("`" + recharge.ReceiveAddress + "`\n")
+		network := strings.ToUpper(recharge.Network)
+		if network == "TRON" {
+			network = "TRON（TRC20）"
+		}
+		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.epusdt_network"], loc) + " " + network + "\n")
+		if recharge.ExpiresAt != "" {
+			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_expires"], loc) + " " + recharge.ExpiresAt + "\n")
+		}
+		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.recharge_epusdt_hint"], loc))
+
+		rows := [][]inlineButton{}
+		if recharge.PayURL != "" {
+			rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.pay_open_link"], loc), URL: recharge.PayURL}})
+		}
+		rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.recharge_check"], loc), CallbackData: cbRechargeCheck + recharge.RechargeNo}})
+		return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
+			contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: inlineKeyboard{InlineKeyboard: rows}})
+	}
+
 	var sb strings.Builder
 	sb.WriteString(localizedText(purchaseTexts["purchase.recharge_created"], loc) + "\n\n")
 	sb.WriteString("🆔 " + recharge.RechargeNo + "\n")

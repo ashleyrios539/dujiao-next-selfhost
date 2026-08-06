@@ -200,6 +200,13 @@ type CreateResult struct {
 	TradeID    string
 	PaymentURL string // {GatewayURL}/pay/checkout-counter/{TradeID}
 	Raw        map[string]interface{}
+
+	// 以下字段从 create-transaction 响应 data 提取，用于在 Telegram 直接展示付款信息。
+	ReceiveAddress string  // USDT 收款地址（TRC20）
+	ActualAmount   float64 // 应付 USDT 金额（actual_amount）
+	Token          string  // 代币（如 usdt）
+	Network        string  // 网络（如 tron）
+	ExpirationTime int64   // 过期时间（unix 秒）
 }
 
 // CallbackData 回调数据
@@ -300,10 +307,101 @@ func CreatePayment(ctx context.Context, cfg *Config, input CreateInput) (*Create
 	}
 
 	return &CreateResult{
-		TradeID:    tradeID,
-		PaymentURL: cfg.GatewayURL + checkoutCounterPathPrefix + tradeID,
-		Raw:        raw,
+		TradeID:        tradeID,
+		PaymentURL:     cfg.GatewayURL + checkoutCounterPathPrefix + tradeID,
+		Raw:            raw,
+		ReceiveAddress: extractDataString(raw, "receive_address"),
+		ActualAmount:   extractDataFloat(raw, "actual_amount"),
+		Token:          extractDataString(raw, "token"),
+		Network:        extractDataString(raw, "network"),
+		ExpirationTime: extractDataInt64(raw, "expiration_time"),
 	}, nil
+}
+
+// extractDataString 从响应顶层或 data 子对象读取字符串字段（缺失时返回空串）。
+func extractDataString(raw map[string]interface{}, key string) string {
+	if v, ok := raw[key]; ok {
+		if s, ok := v.(string); ok {
+			return strings.TrimSpace(s)
+		}
+	}
+	if data, ok := raw["data"].(map[string]interface{}); ok {
+		if v, ok := data[key]; ok {
+			if s, ok := v.(string); ok {
+				return strings.TrimSpace(s)
+			}
+			return strings.TrimSpace(fmt.Sprint(v))
+		}
+	}
+	return ""
+}
+
+// extractDataFloat 从响应顶层或 data 子对象读取 float 字段。
+func extractDataFloat(raw map[string]interface{}, key string) float64 {
+	if v, ok := raw[key]; ok {
+		if f, ok := parseFloat(v); ok {
+			return f
+		}
+	}
+	if data, ok := raw["data"].(map[string]interface{}); ok {
+		if v, ok := data[key]; ok {
+			if f, ok := parseFloat(v); ok {
+				return f
+			}
+		}
+	}
+	return 0
+}
+
+// extractDataInt64 从响应顶层或 data 子对象读取 int64 字段（如过期时间戳）。
+func extractDataInt64(raw map[string]interface{}, key string) int64 {
+	if v, ok := raw[key]; ok {
+		if i, ok := parseInt64(v); ok {
+			return i
+		}
+	}
+	if data, ok := raw["data"].(map[string]interface{}); ok {
+		if v, ok := data[key]; ok {
+			if i, ok := parseInt64(v); ok {
+				return i
+			}
+		}
+	}
+	return 0
+}
+
+// parseFloat 兼容 float64 / int / string 数值。
+func parseFloat(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case int:
+		return float64(val), true
+	case int64:
+		return float64(val), true
+	case string:
+		if f, err := strconv.ParseFloat(strings.TrimSpace(val), 64); err == nil {
+			return f, true
+		}
+	}
+	return 0, false
+}
+
+// parseInt64 兼容 float64 / int64 / string 整数值。
+func parseInt64(v interface{}) (int64, bool) {
+	switch val := v.(type) {
+	case int64:
+		return val, true
+	case int:
+		return int64(val), true
+	case float64:
+		return int64(val), true
+	case string:
+		if i, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64); err == nil {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 // extractTradeID 宽松解析：顶层 / data.trade_id / data.id 任一命中

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	categoryapp "github.com/dujiao-next/internal/modules/catalog/category/application"
 	productapp "github.com/dujiao-next/internal/modules/catalog/product/application"
@@ -215,6 +217,7 @@ func (p *telegramPurchasePorts) toShopProduct(product *productdomain.Product) co
 		ID:               product.ID,
 		Slug:             product.Slug,
 		Title:            p.localeValue(product.TitleJSON),
+		Description:      p.localeValue(product.DescriptionJSON),
 		Currency:         p.currency(),
 		PriceAmount:      product.PriceAmount.String(),
 		FulfillmentType:  product.FulfillmentType,
@@ -381,8 +384,67 @@ func (p *telegramPurchasePorts) CreatePayment(ctx context.Context, input contrac
 		out.ProviderType = result.Payment.ProviderType
 		out.ChannelType = result.Payment.ChannelType
 		out.InteractionMode = result.Payment.InteractionMode
+		fillEpusdtPaymentInfo(result.Payment.ProviderPayload, out)
 	}
 	return out, nil
+}
+
+// fillEpusdtPaymentInfo 从支付记录 ProviderPayload 提取 epusdt 付款关键字段，
+// 供 bot 在聊天内直接展示应付 USDT 金额与收款地址。非 epusdt 渠道无这些字段，静默跳过。
+func fillEpusdtPaymentInfo(payload map[string]interface{}, out *contract.PurchasePaymentResult) {
+	if payload == nil || out == nil {
+		return
+	}
+	if v := payloadString(payload, "receive_address"); v != "" {
+		out.ReceiveAddress = v
+	}
+	if v := payloadString(payload, "actual_amount"); v != "" {
+		out.PayAmount = v
+	}
+	out.Token = payloadString(payload, "token")
+	out.Network = payloadString(payload, "network")
+	if exp, ok := payloadInt64(payload, "expiration_time"); ok && exp > 0 {
+		out.ExpiresAt = time.Unix(exp, 0).Format("2006-01-02 15:04")
+	}
+}
+
+// payloadString 从任意 payload map 读取字符串字段，兼容 float64/int 的 fmt.Sprint。
+func payloadString(payload map[string]interface{}, key string) string {
+	if payload == nil {
+		return ""
+	}
+	v, ok := payload[key]
+	if !ok || v == nil {
+		return ""
+	}
+	if s, ok := v.(string); ok {
+		return strings.TrimSpace(s)
+	}
+	return strings.TrimSpace(fmt.Sprint(v))
+}
+
+// payloadInt64 从任意 payload map 读取 int64 字段（兼容 float64 / string）。
+func payloadInt64(payload map[string]interface{}, key string) (int64, bool) {
+	if payload == nil {
+		return 0, false
+	}
+	v, ok := payload[key]
+	if !ok || v == nil {
+		return 0, false
+	}
+	switch val := v.(type) {
+	case int64:
+		return val, true
+	case int:
+		return int64(val), true
+	case float64:
+		return int64(val), true
+	case string:
+		if i, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64); err == nil {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 // --- PurchaseWalletReader ---
@@ -532,8 +594,27 @@ func (p *telegramPurchasePorts) CreateRecharge(ctx context.Context, input contra
 		out.ProviderType = result.Payment.ProviderType
 		out.ChannelType = result.Payment.ChannelType
 		out.InteractionMode = result.Payment.InteractionMode
+		fillEpusdtRechargeInfo(result.Payment.ProviderPayload, out)
 	}
 	return out, nil
+}
+
+// fillEpusdtRechargeInfo 从充值支付记录 ProviderPayload 提取 epusdt 收款字段。
+func fillEpusdtRechargeInfo(payload map[string]interface{}, out *contract.ShopRecharge) {
+	if payload == nil || out == nil {
+		return
+	}
+	if v := payloadString(payload, "receive_address"); v != "" {
+		out.ReceiveAddress = v
+	}
+	if v := payloadString(payload, "actual_amount"); v != "" {
+		out.PayAmount = v
+	}
+	out.Token = payloadString(payload, "token")
+	out.Network = payloadString(payload, "network")
+	if exp, ok := payloadInt64(payload, "expiration_time"); ok && exp > 0 {
+		out.ExpiresAt = time.Unix(exp, 0).Format("2006-01-02 15:04")
+	}
 }
 
 // GetRechargeStatus 查询充值订单状态（bot 内展示到账结果）。

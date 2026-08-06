@@ -28,6 +28,7 @@ type ShopProduct struct {
 	ID               uint
 	Slug             string
 	Title            string // 已按 locale 解析
+	Description      string // 商品简介（已按 locale 解析，与网站共用同一字段自动同步）
 	Currency         string
 	PriceAmount      string
 	FulfillmentType  string
@@ -206,6 +207,11 @@ type PurchasePaymentResult struct {
 	ChannelType      string
 	InteractionMode  string
 	ExpiresAt        string // 格式化时间或空
+	// 以下字段用于 epusdt 渠道在 Telegram 内直接展示付款信息（无需跳转收银台）。
+	ReceiveAddress string // USDT 收款地址（TRC20）
+	PayAmount      string // 应付 USDT 金额（actual_amount，格式化）
+	Token          string // 代币（如 usdt）
+	Network        string // 网络（如 tron）
 }
 
 // PurchaseUser 已解析的商城用户（供下单使用）。
@@ -319,6 +325,12 @@ type ShopRecharge struct {
 	ProviderType    string
 	ChannelType     string
 	InteractionMode string
+	// 以下字段用于 epusdt 渠道在 Telegram 内直接展示充值收款信息。
+	ReceiveAddress string // USDT 收款地址（TRC20）
+	PayAmount      string // 应付 USDT 金额（actual_amount，格式化）
+	Token          string // 代币（如 usdt）
+	Network        string // 网络（如 tron）
+	ExpiresAt      string // 过期时间（格式化）
 }
 
 // PurchaseRechargeInput 创建充值订单输入。

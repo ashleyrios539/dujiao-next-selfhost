@@ -292,6 +292,45 @@ func TestCreatePayment_RejectsOrderNoTooLong(t *testing.T) {
 	}
 }
 
+func TestCreatePayment_ExtractsReceiveAddressAndAmount(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status_code":200,"message":"success","data":{"trade_id":"T20260509ABC","order_id":"ORD-1","amount":100,"actual_amount":13.45,"receive_address":"TLq32V4saMHPS71juNAZ6KBmhTTSLCRkp6","token":"USDT","network":"tron","expiration_time":1786031621}}`))
+	}))
+	defer srv.Close()
+
+	cfg := &Config{
+		GatewayURL: srv.URL, PID: "1000", SecretKey: "sk-test",
+		Token: "usdt", Network: "tron", Currency: "cny",
+		NotifyURL: "https://example.com/notify", ReturnURL: "https://example.com/return",
+	}
+	cfg.Normalize()
+
+	result, err := CreatePayment(context.Background(), cfg, CreateInput{
+		OrderNo: "ORD-1", Amount: "100",
+		NotifyURL: cfg.NotifyURL, ReturnURL: cfg.ReturnURL,
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment failed: %v", err)
+	}
+	if result.ReceiveAddress != "TLq32V4saMHPS71juNAZ6KBmhTTSLCRkp6" {
+		t.Fatalf("unexpected receive_address: %q", result.ReceiveAddress)
+	}
+	if result.ActualAmount != 13.45 {
+		t.Fatalf("unexpected actual_amount: %v", result.ActualAmount)
+	}
+	if result.Token != "USDT" {
+		t.Fatalf("unexpected token: %q", result.Token)
+	}
+	if result.Network != "tron" {
+		t.Fatalf("unexpected network: %q", result.Network)
+	}
+	if result.ExpirationTime != 1786031621 {
+		t.Fatalf("unexpected expiration_time: %d", result.ExpirationTime)
+	}
+}
+
 func TestParseAndVerifyCallback_Success(t *testing.T) {
 	cfg := &Config{SecretKey: "sk-test"}
 
