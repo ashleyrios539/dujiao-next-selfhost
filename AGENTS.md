@@ -72,6 +72,20 @@ reseller:
 | 挑卡选项多语言化 | `purchase_service.go` | 品牌/卡类型选项名随用户语言本地化（与网页端一致：品牌 `random` 走 i18n、Visa/Mastercard/Discover/AMEX/JCB 固定不翻译；卡类型 `D/PD/C` 走 i18n）。新增 `pickBrandName`/`pickCardTypeName`，作用于 `brandKeyboard`/`cardTypeKeyboard`/`renderDetail` 摘要/`confirmOrder` 确认单摘要；`GetPickStock` 里的中文名仅作未知 key 回退 |
 | 语言切换立即生效 | `service.go` + `purchase_service.go` | `startKeyboard` 标签多语言化（`purchase.menu_shop/binstock/wallet/orders/help`）；`toggleLanguage` 切换后**立即以新语言重渲当前购买步骤**（`renderCurrentStep`，顺带刷新最新数据），无会话或重渲失败则发送**新语言主菜单**（`sendMainMenu` 回调由 `WithPurchase` 注入，含 hint + 快捷键盘）；`/menu` 的 `switch_language` 菜单项也接入切换（原来只回复提示文本） |
 
+### 帮助中心后台在线编辑 → bot 端完整呈现（本分支后续新增）
+
+背景：后台 `TelegramBotHelpCenter.vue` 页面、`telegram_bot.go` schema 的 `Help` 段（`Title/Intro/CenterHint/SupportHint/Items`，每项 `Key/Enabled/Order/Summary/Title/Content/ShowSupportLink`）早已可在线编辑且正确 round-trip，bot 每次请求无缓存读最新配置；但原 `sendHelpCenter` 只渲染 `Title/Intro/Summary 列表/CenterHint`，**静默丢弃**了 `item.Title/Content/ShowSupportLink`、`Help.SupportHint` 且不按 `Order` 排序 —— 后台改这些字段在 bot 端看不到效果。
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| 帮助中心列表 | `webhook/application/help.go`（新建） | `sendHelpCenter` 从 `service.go` 迁入并增强：按 `item.Order` 升序稳定排序、跳过 `!Enabled` 或空 `Summary`/`Key` 项，把每项 `Summary` 做成 **inline 按钮**（`callback_data=help:detail:<key>`，两列），正文追加 `CenterHint` 与 `SupportHint`；`!Help.Enabled` 仍回退 `mainMenuHint` |
+| 帮助条目详情 | `webhook/application/help.go` | 新增 `sendHelpDetail`：渲染该项 `Title`+`Content`；`ShowSupportLink=true` 且 `Basic.SupportURL` 非空 → 附「💬 联系客服」**URL 按钮**；`ShowSupportLink=true` 但 `SupportURL` 空 → 正文后补 `SupportHint` 兜底；恒附「↩️ 返回帮助中心」按钮（`callback_data=help`） |
+| 回调路由 | `webhook/application/service.go` | `handleCallbackQuery` 路由新增 `help:detail:` 前缀分支 → `sendHelpDetail`；alert 文案对 `help`/`menu`/`switch_language`/`help:detail:*` 一律静默 |
+| 文案 | `purchase_service.go` | `purchaseTexts` 新增 `help.back`/`help.contact_support`/`help.item_disabled`（zh-CN/zh-TW/en-US） |
+| 测试 | `webhook/application/service_test.go`（新建） | 7 个用例：列表渲染+Order 排序、Help 关闭回退、跳过禁用项、详情回调（含返回按钮）、ShowSupportLink+URL、ShowSupportLink 无 URL 兜底 SupportHint、未知/停用 key 提示 |
+
+要点：`callback_data` 上限 64 字节，`help:detail:<key>` 远低于此；`key` 由 schema `TrimSpace`。后台编辑后 bot **无需重启**即生效（`HandleUpdate` → `GetTelegramBotConfig` → 无缓存 GORM SELECT）。未改 schema/store/admin 前端（审计确认它们已正确）；未改 `NormalizeHelpItems` 的 12 条上限（潜在问题，当前默认 4 条）。
+
 ### 架构约束（必须遵守，改代码会触发失败）
 
 - **文件预算**：`internal/architecture/reseller_vertical_slice_test.go` 限制每个包的文件数

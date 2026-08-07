@@ -220,12 +220,8 @@ func (s *Service) handleCallbackQuery(ctx context.Context, token string, cfg set
 
 	// 先应答回调，避免 Telegram 转圈
 	alertText := ""
-	switch data {
-	case "help":
-		alertText = ""
-	case "menu":
-		alertText = ""
-	case "switch_language":
+	switch {
+	case data == "help", data == "menu", data == "switch_language", strings.HasPrefix(data, "help:detail:"):
 		alertText = ""
 	default:
 		if isBuiltinMenuKey(data) {
@@ -234,10 +230,12 @@ func (s *Service) handleCallbackQuery(ctx context.Context, token string, cfg set
 	}
 	_ = s.botapi.AnswerCallbackQuery(ctx, token, cb.ID, contract.AnswerCallbackOptions{Text: alertText})
 
-	switch data {
-	case "help":
+	switch {
+	case data == "help":
 		return s.sendHelpCenter(ctx, token, chatID, cfg, locale)
-	case "menu":
+	case strings.HasPrefix(data, "help:detail:"):
+		return s.sendHelpDetail(ctx, token, chatID, cfg, locale, strings.TrimPrefix(data, "help:detail:"))
+	case data == "menu":
 		return s.sendInlineMenu(ctx, token, chatID, cfg, locale)
 	default:
 		if action := resolveMenuAction(cfg, data); action != "" {
@@ -283,38 +281,6 @@ func (s *Service) startKeyboard(locale string) inlineKeyboard {
 		},
 	}
 	return inlineKeyboard{InlineKeyboard: rows}
-}
-
-func (s *Service) sendHelpCenter(ctx context.Context, token, chatID string, cfg settingsmessaging.TelegramBotConfigSetting, locale string) error {
-	if !cfg.Help.Enabled {
-		return s.botapi.SendMessage(ctx, token, chatID, mainMenuHint(cfg, locale), contract.SendMessageOptions{DisableWebPagePreview: true})
-	}
-	var sb strings.Builder
-	if title := localizedText(cfg.Help.Title, locale); title != "" {
-		sb.WriteString(title)
-		sb.WriteString("\n\n")
-	}
-	if intro := localizedText(cfg.Help.Intro, locale); intro != "" {
-		sb.WriteString(intro)
-		sb.WriteString("\n\n")
-	}
-	for _, item := range cfg.Help.Items {
-		if !item.Enabled {
-			continue
-		}
-		summary := localizedText(item.Summary, locale)
-		if summary == "" {
-			continue
-		}
-		sb.WriteString("• ")
-		sb.WriteString(summary)
-		sb.WriteString("\n")
-	}
-	if hint := localizedText(cfg.Help.CenterHint, locale); hint != "" {
-		sb.WriteString("\n")
-		sb.WriteString(hint)
-	}
-	return s.botapi.SendMessage(ctx, token, chatID, sb.String(), contract.SendMessageOptions{DisableWebPagePreview: true})
 }
 
 func (s *Service) sendInlineMenu(ctx context.Context, token, chatID string, cfg settingsmessaging.TelegramBotConfigSetting, locale string) error {
