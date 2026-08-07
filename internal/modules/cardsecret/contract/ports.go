@@ -23,6 +23,8 @@ type Repository interface {
 	ListAvailableByProductFilteredForUpdate(productID, skuID uint, filter PickFilter, limit int) ([]cardsecretdomain.Secret, error)
 	CountAvailableByProductFiltered(productID, skuID uint, filter PickFilter) (int64, error)
 	CountPickAttrs(productID uint) ([]PickAttrCount, error)
+	// CountByBinHead 按卡号首位聚合商品可用卡密库存（用于 bot 首位挑卡展示）。
+	CountByBinHead(productID uint) ([]BinHeadCount, error)
 	GetByID(id uint) (*cardsecretdomain.Secret, error)
 	Update(secret *cardsecretdomain.Secret) error
 	BatchUpdateStatus(ids []uint, status string, updatedAt time.Time) (int64, error)

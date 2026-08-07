@@ -82,12 +82,10 @@ func (s *Service) HandleUpstreamCallback(procurementOrderID uint, upstreamStatus
 		}
 
 		// 通知 Bot 订单已交付
+		// localOrder.ID 是履约所在的订单 ID，native_bot_notifier 据此查履约 payload，
+		// 并在需要时解析父订单 OrderNo 作为 txt 文件名。
 		if s.botNotifier != nil && localOrder != nil {
-			notifyOrderID := localOrder.ID
-			if localOrder.ParentID != nil {
-				notifyOrderID = *localOrder.ParentID
-			}
-			go s.botNotifier.NotifyBotOrderFulfilled(localOrder.UserID, notifyOrderID)
+			go s.botNotifier.NotifyBotOrderFulfilled(localOrder.UserID, localOrder.ID)
 		}
 
 		logger.Infow("procurement_order_fulfilled",

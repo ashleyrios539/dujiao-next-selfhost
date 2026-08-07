@@ -84,6 +84,12 @@ type ShopPickStock struct {
 	Brands    []ShopPickBrand
 	CardTypes []ShopPickCardType
 }
+
+// ShopBinHead 首位挑卡库存（3头/4头/5头/6头 = 卡号首位 3/4/5/6）。
+type ShopBinHead struct {
+	Head  string // 卡号首位（"3"/"4"/"5"/"6"）
+	Stock int64  // 该首位下可用库存合计
+}
 // --- 下单/支付输入输出 DTO ---
 
 // 下单/支付错误分类。container 适配层负责把业务模块错误翻译成这些哨兵，
@@ -230,6 +236,10 @@ type PurchaseCatalogReader interface {
 	GetProductBySlug(ctx context.Context, slug string) (*ShopProduct, error)
 	CountPickAttrs(ctx context.Context, productID uint) ([]PickAttrCount, error)
 	CountAvailableByBinPrefix(ctx context.Context, productID uint, bin string) (int64, error)
+	// CountByBinHead 按卡号首位聚合可用库存（bot 首位挑卡 3头/4头/5头/6头 展示）。
+	CountByBinHead(ctx context.Context, productID uint) ([]ShopBinHead, error)
+	// CountAvailableByBinHead 统计商品下卡号以指定首位开头的可用卡密数量。
+	CountAvailableByBinHead(ctx context.Context, productID uint, head string) (int64, error)
 	// GetPickStock 返回商品挑卡可选维度（国家按库存降序、品牌、卡类型）。
 	GetPickStock(ctx context.Context, productID uint) (*ShopPickStock, error)
 }

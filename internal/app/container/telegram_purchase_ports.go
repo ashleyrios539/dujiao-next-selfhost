@@ -144,6 +144,30 @@ func (p *telegramPurchasePorts) CountAvailableByBinPrefix(_ context.Context, pro
 	return p.products.CountAvailableByBinPrefix(productID, bin)
 }
 
+// CountByBinHead 按卡号首位聚合商品可用库存（bot 首位挑卡 3头/4头/5头/6头 展示）。
+func (p *telegramPurchasePorts) CountByBinHead(_ context.Context, productID uint) ([]contract.ShopBinHead, error) {
+	if p.products == nil {
+		return nil, nil
+	}
+	heads, err := p.products.CountByBinHead(productID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]contract.ShopBinHead, 0, len(heads))
+	for _, h := range heads {
+		out = append(out, contract.ShopBinHead{Head: h.Head, Stock: h.Total})
+	}
+	return out, nil
+}
+
+// CountAvailableByBinHead 统计商品下卡号以指定首位开头的可用卡密数量（首位挑卡库存）。
+func (p *telegramPurchasePorts) CountAvailableByBinHead(_ context.Context, productID uint, head string) (int64, error) {
+	if p.products == nil {
+		return 0, nil
+	}
+	return p.products.CountAvailableByBinPrefix(productID, head)
+}
+
 // GetPickStock 聚合挑卡可选维度：国家按可用库存降序，品牌/卡类型为固定选项。
 func (p *telegramPurchasePorts) GetPickStock(ctx context.Context, productID uint) (*contract.ShopPickStock, error) {
 	attrs, err := p.CountPickAttrs(ctx, productID)

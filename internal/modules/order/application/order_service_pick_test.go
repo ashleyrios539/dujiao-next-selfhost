@@ -52,7 +52,7 @@ func buildPickPricingOrderService(t *testing.T) (*OrderService, productdomain.Pr
 		PurchaseType:     constants.ProductPurchaseMember,
 		FulfillmentType:  constants.FulfillmentTypeAuto,
 		PickEnabled:      true,
-		PickPrices:       jsonmap.JSON{"visa": "1.00", "mastercard": "2.00", "D": "0.50"},
+		PickPrices:       jsonmap.JSON{"visa": "1.00", "mastercard": "2.00", "D": "0.50", "head4": "3.00"},
 		IsActive:         true,
 		CreatedAt:        now,
 		UpdatedAt:        now,
@@ -178,7 +178,7 @@ func TestBuildOrderResultPickBrandInvalid(t *testing.T) {
 	_, err := svc.buildOrderResult(orderCreateParams{
 		UserID: 1,
 		Items: []CreateOrderItem{
-			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickCountry: "US", PickBrands: []string{"amex"}},
+			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickCountry: "US", PickBrands: []string{"invalid_brand"}},
 		},
 	})
 	if err != ErrProductPickBrandInvalid {
@@ -272,7 +272,7 @@ func TestBuildOrderResultPickBinInvalid(t *testing.T) {
 	_, err := svc.buildOrderResult(orderCreateParams{
 		UserID: 1,
 		Items: []CreateOrderItem{
-			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickBin: "4147"},
+			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickBin: "4147ABC"},
 		},
 	})
 	if err != ErrProductPickBinInvalid {
@@ -290,5 +290,42 @@ func TestBuildOrderResultPickBinConflictWithCountry(t *testing.T) {
 	})
 	if err != ErrProductPickBinConflict {
 		t.Fatalf("expected ErrProductPickBinConflict, got %v", err)
+	}
+}
+
+// TestBuildOrderResultPickBinHeadSingleDigitWithCountryAllowed 验证 1 位首位挑卡（3头/4头/5头/6头）
+// 可与国家共存，不触发 ErrProductPickBinConflict。
+func TestBuildOrderResultPickBinHeadSingleDigitWithCountryAllowed(t *testing.T) {
+	svc, product, sku := buildPickPricingOrderService(t)
+	// PickBin="4"（4头）+ PickCountry="US" 应被允许，而非冲突。
+	_, err := svc.buildOrderResult(orderCreateParams{
+		UserID: 1,
+		Items: []CreateOrderItem{
+			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickBin: "4", PickCountry: "US"},
+		},
+	})
+	if err == ErrProductPickBinConflict {
+		t.Fatalf("single-digit head BIN with country must NOT conflict, got %v", err)
+	}
+	// 其余错误（如无库存）可接受，只要不是冲突错误。
+}
+
+// TestBuildOrderResultPickBinHeadSurcharge 验证首位挑卡按 headN 取加价。
+func TestBuildOrderResultPickBinHeadSurcharge(t *testing.T) {
+	svc, product, sku := buildPickPricingOrderService(t)
+	// 商品 PickPrices 含 head4=3.00；4头（PickBin="4"）应取 head4 加价。
+	result, err := svc.buildOrderResult(orderCreateParams{
+		UserID: 1,
+		Items: []CreateOrderItem{
+			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickBin: "4"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildOrderResult: %v", err)
+	}
+	item := result.Plans[0].Item
+	// base 10.00 + head4 3.00 = 13.00
+	if got := item.UnitPrice.String(); got != "13.00" {
+		t.Fatalf("expected unit price 13.00, got %s", got)
 	}
 }

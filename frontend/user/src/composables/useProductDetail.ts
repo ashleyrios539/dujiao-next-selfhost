@@ -97,11 +97,11 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     { value: 'jcb', label: 'JCB' },
   ]
 
+  // 卡种类合并为 DEBIT（D+PD，提交 D）与 CREDIT（C，提交 C）两类。
   const pickTypeOptions = [
     { value: 'random', label: t('productDetail.pickTypeRandom') },
-    { value: 'D', label: t('productDetail.pickTypeD') },
-    { value: 'PD', label: t('productDetail.pickTypePD') },
-    { value: 'C', label: t('productDetail.pickTypeC') },
+    { value: 'D', label: t('productDetail.pickTypeDebit') },
+    { value: 'C', label: t('productDetail.pickTypeCredit') },
   ]
 
   // 单选切换：点已选中项取消，点其他项替换。

@@ -257,3 +257,61 @@ func TestListAvailableByProductFilteredMatchesPickFilter(t *testing.T) {
 		t.Fatalf("expected 3 pick attr rows, got %d", len(attrs))
 	}
 }
+
+// TestCountByBinHeadAggregatesByFirstDigit 验证按卡号首位聚合库存。
+func TestCountByBinHeadAggregatesByFirstDigit(t *testing.T) {
+	db := setupBinServiceTestDB(t)
+	store := cardsecretgormstore.New(db)
+	product := &productdomain.Product{CategoryID: 1, Slug: "bin-head-prod", TitleJSON: jsonmap.JSON{"zh-CN": "x"}, PriceAmount: money.FromDecimal(decimal.NewFromInt(1)), PurchaseType: constants.ProductPurchaseMember, FulfillmentType: constants.FulfillmentTypeAuto, IsActive: true}
+	if err := db.Create(product).Error; err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+	now := time.Now()
+	secrets := []cardsecretdomain.Secret{
+		{ProductID: product.ID, Secret: "a", Status: cardsecretdomain.StatusAvailable, BinPrefix: "411111", CreatedAt: now},
+		{ProductID: product.ID, Secret: "b", Status: cardsecretdomain.StatusAvailable, BinPrefix: "422222", CreatedAt: now},
+		{ProductID: product.ID, Secret: "c", Status: cardsecretdomain.StatusAvailable, BinPrefix: "511111", CreatedAt: now},
+		{ProductID: product.ID, Secret: "d", Status: cardsecretdomain.StatusAvailable, BinPrefix: "611111", CreatedAt: now},
+		{ProductID: product.ID, Secret: "e", Status: cardsecretdomain.StatusAvailable, BinPrefix: "622222", CreatedAt: now},
+		{ProductID: product.ID, Secret: "f", Status: cardsecretdomain.StatusAvailable, BinPrefix: "", CreatedAt: now}, // 空 bin_prefix 应被跳过
+	}
+	for i := range secrets {
+		if err := db.Create(&secrets[i]).Error; err != nil {
+			t.Fatalf("create secret: %v", err)
+		}
+	}
+	heads, err := store.CountByBinHead(product.ID)
+	if err != nil {
+		t.Fatalf("CountByBinHead: %v", err)
+	}
+	got := map[string]int64{}
+	for _, h := range heads {
+		got[h.Head] = h.Total
+	}
+	if got["4"] != 2 {
+		t.Errorf("head 4: want 2, got %d", got["4"])
+	}
+	if got["5"] != 1 {
+		t.Errorf("head 5: want 1, got %d", got["5"])
+	}
+	if got["6"] != 2 {
+		t.Errorf("head 6: want 2, got %d", got["6"])
+	}
+
+	// 首位前缀 LIKE 匹配：4 头应匹配 2 张。
+	count4, err := store.CountAvailableByProductFiltered(product.ID, 0, cardsecretcontract.PickFilter{BinPrefix: "4"})
+	if err != nil {
+		t.Fatalf("count head 4: %v", err)
+	}
+	if count4 != 2 {
+		t.Errorf("LIKE 4%%: want 2, got %d", count4)
+	}
+	// 6 位精确匹配：411111 应匹配 1 张。
+	countExact, err := store.CountAvailableByProductFiltered(product.ID, 0, cardsecretcontract.PickFilter{BinPrefix: "411111"})
+	if err != nil {
+		t.Fatalf("count exact: %v", err)
+	}
+	if countExact != 1 {
+		t.Errorf("exact 411111: want 1, got %d", countExact)
+	}
+}

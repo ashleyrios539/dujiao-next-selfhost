@@ -74,6 +74,10 @@ func (stub stockCounterStub) CountAvailableByProductFiltered(uint, uint, cardsec
 	return 0, nil
 }
 
+func (stub stockCounterStub) CountByBinHead(uint) ([]cardsecretcontract.BinHeadCount, error) {
+	return nil, nil
+}
+
 func TestListPublicForTenantBuildsVisibilityFilterBeforePagination(t *testing.T) {
 	products := &productRepositoryStub{total: 2}
 	categories := categoryRepositoryStub{

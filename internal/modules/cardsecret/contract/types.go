@@ -38,6 +38,13 @@ type PickAttrCount struct {
 	Total     int64  `gorm:"column:total" json:"total"`
 }
 
+// BinHeadCount 是按卡号首位（bin_prefix 第一位）聚合的可用卡密数量，
+// 用于 bot「3头/4头/5头/6头」首位挑卡的库存展示。
+type BinHeadCount struct {
+	Head  string `gorm:"column:head" json:"head"` // 卡号首位（"3".."6"）
+	Total int64  `gorm:"column:total" json:"total"`
+}
+
 // CardBinFilter 描述 BIN 库列表筛选条件。
 type CardBinFilter struct {
 	Country string

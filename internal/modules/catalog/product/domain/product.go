@@ -76,12 +76,18 @@ const (
 	PickPriceKeyTypePD     = "PD"
 	PickPriceKeyTypeC      = "C"
 	PickPriceKeyBin        = "bin"
+	// 首位挑卡加价键（3头/4头/5头/6头 = 卡号首位 3/4/5/6）。
+	PickPriceKeyHead3 = "head3"
+	PickPriceKeyHead4 = "head4"
+	PickPriceKeyHead5 = "head5"
+	PickPriceKeyHead6 = "head6"
 )
 
 var pickPriceKeys = []string{
 	PickPriceKeyVisa, PickPriceKeyMastercard, PickPriceKeyDiscover, PickPriceKeyAmex, PickPriceKeyJCB,
 	PickPriceKeyTypeD, PickPriceKeyTypePD, PickPriceKeyTypeC,
 	PickPriceKeyBin,
+	PickPriceKeyHead3, PickPriceKeyHead4, PickPriceKeyHead5, PickPriceKeyHead6,
 }
 
 // NormalizePickPrices 归一化挑卡属性加价表：仅保留已知键，金额保留两位小数，负数归零。

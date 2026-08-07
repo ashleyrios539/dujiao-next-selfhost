@@ -264,7 +264,12 @@ func (r *Store) buildPickQuery(productID, skuID uint, filter cardsecretcontract.
 		query = query.Where("card_type IN ?", expanded)
 	}
 	if bin := strings.TrimSpace(filter.BinPrefix); bin != "" {
-		query = query.Where("bin_prefix = ?", bin)
+		// 6 位精确匹配（挑头）；1-5 位前缀匹配（首位挑卡：3头/4头/5头/6头）。
+		if len(bin) >= 6 {
+			query = query.Where("bin_prefix = ?", bin[:6])
+		} else {
+			query = query.Where("bin_prefix LIKE ?", bin+"%")
+		}
 	}
 	return query
 }
@@ -318,6 +323,22 @@ func (r *Store) CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCou
 		Select("product_id, sku_id, country, brand, card_type, COUNT(*) as total").
 		Where("product_id = ? AND status = ? AND deleted_at IS NULL", productID, cardsecretdomain.StatusAvailable).
 		Group("product_id, sku_id, country, brand, card_type").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// CountByBinHead 按卡号首位聚合商品可用卡密数量（用于 bot 首位挑卡 3头/4头/5头/6头 展示）。
+func (r *Store) CountByBinHead(productID uint) ([]cardsecretcontract.BinHeadCount, error) {
+	if productID == 0 {
+		return []cardsecretcontract.BinHeadCount{}, nil
+	}
+	var rows []cardsecretcontract.BinHeadCount
+	if err := r.db.Model(&cardsecretdomain.Secret{}).
+		Select("substr(bin_prefix, 1, 1) as head, COUNT(*) as total").
+		Where("product_id = ? AND status = ? AND deleted_at IS NULL AND bin_prefix <> ''", productID, cardsecretdomain.StatusAvailable).
+		Group("substr(bin_prefix, 1, 1)").
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}

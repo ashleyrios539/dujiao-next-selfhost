@@ -27,6 +27,10 @@ type nativeBotNotifier struct {
 var _ fulfillmentapp.BotNotifier = (*nativeBotNotifier)(nil)
 
 // EnqueueOrderFulfilled 查询交付卡密并以 txt 文件发给用户的 Telegram 私聊。
+//
+// orderID 是履约所在的子订单 ID（CreateAuto 在子订单上运行，履约记录 order_id=child.ID）。
+// 早期实现误传父订单 ID，导致 GetByOrderID(parentID) 查不到履约记录而静默不发 txt。
+// 文件名用父订单 OrderNo（与 bot「我的订单」展示一致），payload 用子订单履约记录。
 func (n *nativeBotNotifier) EnqueueOrderFulfilled(telegramUserID string, orderID uint) error {
 	if n == nil || n.token == nil || n.api == nil || n.fulf == nil {
 		return nil
@@ -45,8 +49,16 @@ func (n *nativeBotNotifier) EnqueueOrderFulfilled(telegramUserID string, orderID
 	}
 	orderNo := ""
 	if n.orders != nil {
-		if order, oerr := n.orders.GetByID(orderID); oerr == nil && order != nil && strings.TrimSpace(order.OrderNo) != "" {
-			orderNo = strings.TrimSpace(order.OrderNo)
+		if order, oerr := n.orders.GetByID(orderID); oerr == nil && order != nil {
+			// 文件名优先用父订单 OrderNo（bot 展示父订单号）；子订单无父时用自身 OrderNo。
+			if order.ParentID != nil {
+				if parent, perr := n.orders.GetByID(*order.ParentID); perr == nil && parent != nil && strings.TrimSpace(parent.OrderNo) != "" {
+					orderNo = strings.TrimSpace(parent.OrderNo)
+				}
+			}
+			if orderNo == "" && strings.TrimSpace(order.OrderNo) != "" {
+				orderNo = strings.TrimSpace(order.OrderNo)
+			}
 		}
 	}
 	if orderNo == "" {

@@ -126,7 +126,8 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 			return nil, ErrProductPickNotSupported
 		}
 		if product.PickEnabled {
-			if pickBin != "" && pickCountry != "" {
+			// 6 位挑头 BIN 与国家互斥；1 位首位挑卡（3头/4头/5头/6头）可与国家共存（按首位+国家交集过滤）。
+			if len(pickBin) >= 6 && pickCountry != "" {
 				return nil, ErrProductPickBinConflict
 			}
 			if pickBin == "" && pickCountry == "" {
@@ -136,7 +137,8 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 				if !validPickBin(pickBin) {
 					return nil, ErrProductPickBinInvalid
 				}
-			} else {
+			}
+			if pickCountry != "" {
 				if !validPickCountry(pickCountry) {
 					return nil, ErrProductPickCountryInvalid
 				}
@@ -149,9 +151,10 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 			}
 		}
 		// 挑头（BIN）模式：加价独立配置在 pick_prices["bin"]，与其他品牌/种类加价互不影响。
+		// 首位挑卡（1 位 BIN）按首位取对应 head3/head4/head5/head6 加价。
 		var pickSurcharge decimal.Decimal
 		if pickBin != "" {
-			pickSurcharge = productdomain.PickUnitSurcharge(product.PickPrices, []string{productdomain.PickPriceKeyBin}, nil)
+			pickSurcharge = productdomain.PickUnitSurcharge(product.PickPrices, []string{pickBinSurchargeKey(pickBin)}, nil)
 		} else {
 			pickSurcharge = productdomain.PickUnitSurcharge(product.PickPrices, pickBrands, pickCardTypes)
 		}
@@ -643,9 +646,9 @@ func validPickCountry(value string) bool {
 	return true
 }
 
-// validPickBin 校验 BIN 为 6 位数字。
+// validPickBin 校验 BIN 为 1-6 位数字：6 位为挑头精确匹配，1 位为首位挑卡（3头/4头/5头/6头）。
 func validPickBin(value string) bool {
-	if len(value) != 6 {
+	if len(value) < 1 || len(value) > 6 {
 		return false
 	}
 	for _, r := range value {
@@ -654,6 +657,15 @@ func validPickBin(value string) bool {
 		}
 	}
 	return true
+}
+
+// pickBinSurchargeKey 根据 BIN 长度返回对应的挑卡加价键：6 位 → "bin"，1 位 → "head<N>"。
+func pickBinSurchargeKey(pickBin string) string {
+	pickBin = strings.TrimSpace(pickBin)
+	if len(pickBin) == 1 {
+		return "head" + pickBin
+	}
+	return productdomain.PickPriceKeyBin
 }
 
 // validatePickBrands 校验品牌列表值合法。

@@ -37,6 +37,8 @@ type StockCounter interface {
 	CountStockByProductIDs(productIDs []uint) ([]cardsecretcontract.SKUStockCount, error)
 	CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCount, error)
 	CountAvailableByProductFiltered(productID, skuID uint, filter cardsecretcontract.PickFilter) (int64, error)
+	// CountByBinHead 按卡号首位聚合可用卡密库存（bot 首位挑卡展示）。
+	CountByBinHead(productID uint) ([]cardsecretcontract.BinHeadCount, error)
 }
 
 // Options 描述 Product 读取应用服务的端口和领域错误。
@@ -257,6 +259,14 @@ func (s *Service) CountAvailableByBinPrefix(productID uint, bin string) (int64, 
 		return 0, nil
 	}
 	return s.stock.CountAvailableByProductFiltered(productID, 0, cardsecretcontract.PickFilter{BinPrefix: bin})
+}
+
+// CountByBinHead 按卡号首位聚合商品可用卡密库存（bot 首位挑卡 3头/4头/5头/6头 展示）。
+func (s *Service) CountByBinHead(productID uint) ([]cardsecretcontract.BinHeadCount, error) {
+	if s.stock == nil {
+		return nil, nil
+	}
+	return s.stock.CountByBinHead(productID)
 }
 
 func normalizeStockStatus(raw string) string {

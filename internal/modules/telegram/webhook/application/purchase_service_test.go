@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ type stubCatalog struct {
 	binCount   map[uint]int64
 	binCountBy map[string]int64
 	pickStock  *contract.ShopPickStock
+	heads      []contract.ShopBinHead
 }
 
 func (c *stubCatalog) ListActiveCategories(context.Context) ([]contract.ShopCategory, error) {
@@ -40,6 +42,17 @@ func (c *stubCatalog) CountAvailableByBinPrefix(_ context.Context, productID uin
 	}
 	if c.binCount != nil {
 		return c.binCount[productID], nil
+	}
+	return 0, nil
+}
+func (c *stubCatalog) CountByBinHead(context.Context, uint) ([]contract.ShopBinHead, error) {
+	return c.heads, nil
+}
+func (c *stubCatalog) CountAvailableByBinHead(_ context.Context, productID uint, head string) (int64, error) {
+	for _, h := range c.heads {
+		if h.Head == head {
+			return h.Stock, nil
+		}
 	}
 	return 0, nil
 }
@@ -98,15 +111,18 @@ func (s *stubSettings) GetSiteName(context.Context) (string, error) { return s.n
 // --- fake botapi ---
 
 type fakeBotAPI struct {
-	sent    []string
-	markups []inlineKeyboard
-	photos  []string // SendPhotoBytes 的 caption 记录
+	sent         []string
+	markups      []inlineKeyboard
+	replyMarkups []any // 回复键盘/移除键盘等非 inline 标记
+	photos       []string // SendPhotoBytes 的 caption 记录
 }
 
 func (f *fakeBotAPI) SendMessage(_ context.Context, _, _ string, message string, opts contract.SendMessageOptions) error {
 	f.sent = append(f.sent, message)
 	if mk, ok := opts.ReplyMarkup.(inlineKeyboard); ok {
 		f.markups = append(f.markups, mk)
+	} else if opts.ReplyMarkup != nil {
+		f.replyMarkups = append(f.replyMarkups, opts.ReplyMarkup)
 	}
 	return nil
 }
@@ -114,6 +130,8 @@ func (f *fakeBotAPI) SendPhotoBytes(_ context.Context, _, _, _ string, _ []byte,
 	f.photos = append(f.photos, caption)
 	if mk, ok := opts.ReplyMarkup.(inlineKeyboard); ok {
 		f.markups = append(f.markups, mk)
+	} else if opts.ReplyMarkup != nil {
+		f.replyMarkups = append(f.replyMarkups, opts.ReplyMarkup)
 	}
 	return nil
 }
@@ -1276,5 +1294,199 @@ func TestPurchaseServiceRechargePromptHasCancelKeyboard(t *testing.T) {
 	}
 	if !keyboardContains(bot.markups[len(bot.markups)-1], "取消") {
 		t.Fatalf("expected cancel button on recharge prompt, got: %+v", bot.markups)
+	}
+}
+
+// --- 新购买流程（8 按钮 + 首位数字 + reply 键盘测活）测试 ---
+
+// newBuyFlowService 构造启用挑卡+测活的商品，用于新购买流程测试。
+func newBuyFlowService(t *testing.T, bot *fakeBotAPI, withCardCheck bool) *purchaseService {
+	t.Helper()
+	product := &contract.ShopProduct{
+		ID: 10, Slug: "dx", Title: "挑卡商品", Currency: "CNY",
+		PriceAmount: "0.10", FulfillmentType: "auto",
+		PickEnabled: true, PickPrices: map[string]string{
+			"bin": "0.10", "head4": "0.05", "C": "0.02", "D": "0.03",
+		},
+		CardCheckEnabled: withCardCheck,
+		CardCheckFee:     "0.90",
+		StockAvailable:  100,
+	}
+	return newPurchaseService(contract.PurchasePorts{
+		Catalog: &stubCatalog{
+			cats:     []contract.ShopCategory{{ID: 1, Name: "卡密"}},
+			products: []contract.ShopProduct{*product},
+			bySlug:   map[string]*contract.ShopProduct{"dx": product},
+			pickStock: &contract.ShopPickStock{
+				Countries: []contract.ShopPickCountry{{Code: "US", Name: "美国", Stock: 50}},
+			},
+			heads: []contract.ShopBinHead{{Head: "4", Stock: 30}},
+		},
+		Orders: &stubOrders{
+			preview: &contract.PurchasePreview{
+				Currency: "CNY", TotalAmount: "0.10",
+				Items: []contract.PurchasePreviewItem{{ProductID: 10, Quantity: 1, UnitPrice: "0.10", TotalPrice: "0.10", Title: "挑卡商品", PickCountry: "US"}},
+			},
+			created: &contract.PurchaseCreated{OrderID: 1, OrderNo: "O10", Currency: "CNY", TotalAmount: "0.10"},
+		},
+		Payments: &stubPayments{result: &contract.PurchasePaymentResult{OrderPaid: true}},
+		Wallet:   &stubWallet{},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+		Settings: &stubSettings{cur: "CNY", name: "商店"},
+	}, bot, func() string { return "zh-CN" })
+}
+
+func TestPurchaseServiceRenderDetailShowsTwoPriceLinesAndBuyButtons(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newBuyFlowService(t, bot, true)
+	handle := func(u webhookdomain.Update) {
+		if _, err := svc.handle(context.Background(), "tok", u); err != nil {
+			t.Fatalf("handle err: %v", err)
+		}
+	}
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "/shop"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "1", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCatPrefix + "1"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "2", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbProdPrefix + "dx"}})
+
+	// 商品初始页文本：随机购买两档价格 + 挑头购买两档价格，不显示基础价行。
+	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "随机购买") || !containsStr(last, "不测活价") || !containsStr(last, "测活价") {
+		t.Fatalf("expected two-tier price lines, got: %s", last)
+	}
+	if containsStr(last, "价格 0.10") { // 不应再显示「价格 <基础价>」行
+		t.Fatalf("detail must not show base price line, got: %s", last)
+	}
+	// 键盘含 8 个购买类型按钮。
+	mk := bot.markups[len(bot.markups)-1]
+	for _, want := range []string{"随机购买", "挑头购买", "3头", "4头", "5头", "6头", "CREDIT", "DEBIT"} {
+		if !keyboardContains(mk, want) {
+			t.Fatalf("expected buy-type button %q in keyboard, got: %+v", want, mk)
+		}
+	}
+}
+
+func TestPurchaseServiceBuyTypeRandomToCountryThenConfirm(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newBuyFlowService(t, bot, false) // 非测活商品：选国家后直接确认
+	handle := func(u webhookdomain.Update) {
+		if _, err := svc.handle(context.Background(), "tok", u); err != nil {
+			t.Fatalf("handle err: %v", err)
+		}
+	}
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "/shop"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "1", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCatPrefix + "1"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "2", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbProdPrefix + "dx"}})
+	// 点随机购买
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "3", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbBuyPrefix + "random"}})
+	// 选国家 US
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "4", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCountryPrefix + "US"}})
+	// 非测活商品：选国家后直接进确认页
+	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "订单确认") {
+		t.Fatalf("expected confirm page after country for non-cardcheck product, got: %s", last)
+	}
+}
+
+func TestPurchaseServiceBuyTypeRandomToCountryThenCheckChoiceReplyKeyboard(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newBuyFlowService(t, bot, true) // 测活商品：选国家后进测活选择
+	handle := func(u webhookdomain.Update) {
+		if _, err := svc.handle(context.Background(), "tok", u); err != nil {
+			t.Fatalf("handle err: %v", err)
+		}
+	}
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "/shop"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "1", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCatPrefix + "1"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "2", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbProdPrefix + "dx"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "3", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbBuyPrefix + "random"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "4", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCountryPrefix + "US"}})
+	// 测活商品：应进入测活选择，文本含「请选择是否测活」
+	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "请选择是否测活") {
+		t.Fatalf("expected check-choice prompt, got: %s", last)
+	}
+	// 应回 reply 键盘（毛料/包活），非 inline。
+	if len(bot.replyMarkups) == 0 {
+		t.Fatalf("expected a reply keyboard markup for check choice")
+	}
+	rk, ok := bot.replyMarkups[len(bot.replyMarkups)-1].(replyKeyboard)
+	if !ok {
+		t.Fatalf("expected replyKeyboard markup, got: %T", bot.replyMarkups[len(bot.replyMarkups)-1])
+	}
+	var labels []string
+	for _, row := range rk.Keyboard {
+		for _, b := range row {
+			labels = append(labels, b.Text)
+		}
+	}
+	if !containsStr(strings.Join(labels, ","), "毛料") || !containsStr(strings.Join(labels, ","), "包活") {
+		t.Fatalf("expected 毛料/包活 reply buttons, got: %v", labels)
+	}
+	// 用户发送「包活」
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, Text: "包活"}})
+	// 应回 replyKeyboardRemove + 确认页
+	last = bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "订单确认") {
+		t.Fatalf("expected confirm page after check choice, got: %s", last)
+	}
+}
+
+func TestPurchaseServiceBuyTypeBinEntersBinInput(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newBuyFlowService(t, bot, false)
+	handle := func(u webhookdomain.Update) {
+		if _, err := svc.handle(context.Background(), "tok", u); err != nil {
+			t.Fatalf("handle err: %v", err)
+		}
+	}
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "/shop"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "1", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCatPrefix + "1"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "2", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbProdPrefix + "dx"}})
+	// 点挑头购买 → 进 BIN 输入步骤
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "3", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbBuyPrefix + "bin"}})
+	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "请直接输入 6 位 BIN") {
+		t.Fatalf("expected BIN input prompt after 挑头购买, got: %s", last)
+	}
+}
+
+func TestPurchaseServiceCountryKeyboardHasEmojiAndPagination(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newBuyFlowService(t, bot, false)
+	// 造 8 个国家以触发翻页。
+	svc.mu.Lock()
+	// 直接造一个会话验证 countryKeyboard 分页。
+	svc.sessions[100] = &purchaseSession{chatID: 100, locale: "zh-CN", selected: &contract.ShopProduct{ID: 10, Currency: "CNY"}, pickStock: &contract.ShopPickStock{
+		Countries: []contract.ShopPickCountry{
+			{Code: "US", Name: "美国", Stock: 10},
+			{Code: "DE", Name: "德国", Stock: 9},
+			{Code: "FR", Name: "法国", Stock: 8},
+			{Code: "GB", Name: "英国", Stock: 7},
+			{Code: "CA", Name: "加拿大", Stock: 6},
+			{Code: "AU", Name: "澳大利亚", Stock: 5},
+			{Code: "JP", Name: "日本", Stock: 4},
+			{Code: "KR", Name: "韩国", Stock: 3},
+		},
+	}, lastUpdatedAt: time.Now()}
+	svc.mu.Unlock()
+	view := svc.snapshot(100)
+	mk := svc.countryKeyboard(view, 1)
+	// 第一页 6 个国家按钮，含 emoji。
+	joined := ""
+	for _, row := range mk.InlineKeyboard {
+		for _, b := range row {
+			joined += b.Text + " | "
+		}
+	}
+	if !containsStr(joined, "🇺🇸") {
+		t.Fatalf("expected US emoji flag, got: %s", joined)
+	}
+	// 第一页有「下一页」按钮（因共 8 个）。
+	if !keyboardContains(mk, "下一页 ▶") {
+		t.Fatalf("expected next-page button on page 1, got: %s", joined)
+	}
+	mk2 := svc.countryKeyboard(view, 2)
+	if !keyboardContains(mk2, "上一页") {
+		t.Fatalf("expected prev-page button on page 2")
 	}
 }

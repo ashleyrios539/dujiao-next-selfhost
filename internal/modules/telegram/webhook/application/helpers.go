@@ -137,6 +137,23 @@ type inlineKeyboard struct {
 	InlineKeyboard [][]inlineButton `json:"inline_keyboard"`
 }
 
+// replyKeyboardButton 是 reply 键盘按钮（从输入框弹出，点一下即发送文字）。
+type replyKeyboardButton struct {
+	Text string `json:"text"`
+}
+
+// replyKeyboard 是 Telegram ReplyKeyboardMarkup：从输入框弹出自定义键盘。
+type replyKeyboard struct {
+	Keyboard        [][]replyKeyboardButton `json:"keyboard"`
+	ResizeKeyboard  bool                   `json:"resize_keyboard,omitempty"`
+	OneTimeKeyboard bool                   `json:"one_time_keyboard,omitempty"`
+}
+
+// replyKeyboardRemove 移除 reply 键盘（回复到普通输入框）。
+type replyKeyboardRemove struct {
+	RemoveKeyboard bool `json:"remove_keyboard"`
+}
+
 // buildInlineKeyboard 根据配置生成内联键盘。
 func buildInlineKeyboard(cfg settingsmessaging.TelegramBotConfigSetting, locale string) inlineKeyboard {
 	rows := make([][]inlineButton, 0)

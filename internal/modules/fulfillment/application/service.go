@@ -425,11 +425,9 @@ func (s *Service) CreateAuto(orderID uint) (*fulfillmentdomain.Fulfillment, erro
 		}
 	}
 	// Telegram 通知：交付完成后推送给用户
-	notifyOrderID := orderID
-	if order.ParentID != nil {
-		notifyOrderID = *order.ParentID
-	}
-	go s.NotifyBotOrderFulfilled(order.UserID, notifyOrderID)
+	// orderID 是子订单 ID（CreateAuto 在子订单上运行，履约记录 order_id=child.ID），
+	// native_bot_notifier 据此查履约 payload，并解析父订单 OrderNo 作为文件名。
+	go s.NotifyBotOrderFulfilled(order.UserID, orderID)
 	// B 侧：自动交付完成后触发下游回调
 	if s.downstreamCallbackSvc != nil {
 		s.downstreamCallbackSvc.EnqueueCallback(orderID)

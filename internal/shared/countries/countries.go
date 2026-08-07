@@ -1,7 +1,10 @@
 // Package countries 提供 ISO 3166-1 alpha-2 两字母国家代码到中文名的静态字典。
 package countries
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 var chineseNames = map[string]string{
 	"US": "美国",
@@ -91,4 +94,23 @@ func List() []Item {
 		items = append(items, Item{Code: code, Name: chineseNames[code]})
 	}
 	return items
+}
+
+// EmojiFlag 返回 ISO 3166-1 alpha-2 国家代码对应的旗帜 emoji（regional indicator 拼接）。
+// 非两字母代码返回空串。纯计算，无需数据表。
+func EmojiFlag(code string) string {
+	if len(code) != 2 {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range code {
+		if r >= 'A' && r <= 'Z' {
+			b.WriteRune(0x1F1E6 + (r - 'A'))
+		} else if r >= 'a' && r <= 'z' {
+			b.WriteRune(0x1F1E6 + (r - 'a'))
+		} else {
+			return ""
+		}
+	}
+	return b.String()
 }
