@@ -111,6 +111,11 @@ func (p *telegramPurchasePorts) GetProductBySlug(_ context.Context, slug string)
 	if err != nil {
 		return nil, err
 	}
+	// AutoStockAvailable 是 gorm:"-" 计算字段，需显式聚合卡密库存，
+	// 否则商品详情页随机购买库存恒为 0（与 ListProducts 一致）。
+	products := []productdomain.Product{*product}
+	_ = p.products.ApplyAutoStockCounts(products)
+	*product = products[0]
 	item := p.toShopProduct(product)
 	return &item, nil
 }
@@ -575,6 +580,32 @@ func (p *telegramPurchasePorts) GetOrderByOrderNo(ctx context.Context, userID ui
 			Type:    order.Fulfillment.Type,
 			Status:  order.Fulfillment.Status,
 			Payload: order.Fulfillment.Payload,
+		}
+	}
+	// 履约记录可能建在子订单上（自动发货 CreateAuto 在子订单上建 fulfillment），
+	// 父订单的 Fulfillment 为空时需聚合子订单履约 payload，否则「我的订单」详情不显示卡密。
+	if detail.Fulfillment == nil || strings.TrimSpace(detail.Fulfillment.Payload) == "" {
+		var parts []string
+		var fType, fStatus string
+		for i := range order.Children {
+			cf := order.Children[i].Fulfillment
+			if cf == nil || strings.TrimSpace(cf.Payload) == "" {
+				continue
+			}
+			parts = append(parts, cf.Payload)
+			if fType == "" {
+				fType = cf.Type
+			}
+			if fStatus == "" {
+				fStatus = cf.Status
+			}
+		}
+		if len(parts) > 0 {
+			detail.Fulfillment = &contract.ShopFulfillment{
+				Type:    fType,
+				Status:  fStatus,
+				Payload: strings.Join(parts, "\n"),
+			}
 		}
 	}
 	return detail, nil

@@ -4,10 +4,12 @@ import (
 	"strconv"
 	"testing"
 
+	cardsecretdomain "github.com/dujiao-next/internal/modules/cardsecret/domain"
 	productdomain "github.com/dujiao-next/internal/modules/catalog/product/domain"
 
 	categorydomain "github.com/dujiao-next/internal/modules/catalog/category/domain"
 
+	"github.com/dujiao-next/internal/constants"
 	"github.com/dujiao-next/internal/shared/jsonmap"
 	"github.com/dujiao-next/internal/shared/money"
 	"github.com/shopspring/decimal"
@@ -234,5 +236,62 @@ func TestProductServiceGetAdminByIDIncludesInactiveSKUs(t *testing.T) {
 	}
 	if got.SKUs[1].SKUCode != "INACTIVE" || got.SKUs[1].IsActive {
 		t.Fatalf("expected second sku to be inactive INACTIVE, got %+v", got.SKUs[1])
+	}
+}
+
+// TestGetPublicBySlugForBotThenApplyAutoStockCounts 验证 bot 商品详情路径能拿到自动发货库存：
+// GetPublicBySlugForBot 返回的商品 AutoStockAvailable(gorm:"-") 为 0（store 不填充），
+// 必须在容器层再调用 ApplyAutoStockCounts 才会得到真实库存——回归 telegramPurchasePorts.GetProductBySlug 修复。
+func TestGetPublicBySlugForBotThenApplyAutoStockCounts(t *testing.T) {
+	svc, db := newProductServiceForTest(t)
+
+	category := categorydomain.Category{
+		Slug:     "bot-stock-cat", NameJSON: jsonmap.JSON{"zh-CN": "bot-stock-cat"}, IsActive: true,
+	}
+	if err := db.Create(&category).Error; err != nil {
+		t.Fatalf("create category: %v", err)
+	}
+	product := productdomain.Product{
+		CategoryID:      category.ID,
+		Slug:            "bot-stock-product",
+		TitleJSON:       jsonmap.JSON{"zh-CN": "bot-stock-product"},
+		PriceAmount:     money.FromDecimal(decimal.NewFromInt(1)),
+		IsActive:        true,
+		BotVisible:      true,
+		FulfillmentType: constants.FulfillmentTypeAuto,
+	}
+	if err := db.Create(&product).Error; err != nil {
+		t.Fatalf("create product: %v", err)
+	}
+	sku := productdomain.ProductSKU{
+		ProductID: product.ID, SKUCode: productdomain.DefaultSKUCode,
+		SpecValuesJSON: jsonmap.JSON{}, PriceAmount: money.FromDecimal(decimal.NewFromInt(1)),
+		IsActive: true,
+	}
+	if err := db.Create(&sku).Error; err != nil {
+		t.Fatalf("create sku: %v", err)
+	}
+	// 插入 5 张可用卡密
+	insertCardSecrets(t, db, product.ID, sku.ID, cardsecretdomain.StatusAvailable, 5)
+
+	got, err := svc.Read.GetPublicBySlugForBot("bot-stock-product")
+	if err != nil {
+		t.Fatalf("GetPublicBySlugForBot: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected product, got nil")
+	}
+	// store 不填充计算字段，直接拿到的 AutoStockAvailable 应为 0（这正是容器层修复要补的）。
+	if got.AutoStockAvailable != 0 {
+		t.Fatalf("pre-apply AutoStockAvailable want 0, got %d", got.AutoStockAvailable)
+	}
+	// 容器层修复：GetProductBySlug 取得 product 后再 ApplyAutoStockCounts。
+	products := []productdomain.Product{*got}
+	if err := svc.Read.ApplyAutoStockCounts(products); err != nil {
+		t.Fatalf("ApplyAutoStockCounts: %v", err)
+	}
+	*got = products[0]
+	if got.AutoStockAvailable != 5 {
+		t.Fatalf("post-apply AutoStockAvailable want 5, got %d", got.AutoStockAvailable)
 	}
 }

@@ -1911,11 +1911,20 @@ func (s *purchaseService) cardTypeStock(view *purchaseView, cardTypes []string) 
 }
 
 // buyTypeRow 构造单个购买类型按钮行：标签[库存] 毛料价。
+// 挑头购买按钮只显示价格，不显示库存——库存需用户输入 BIN 后才精确，输入后由 handleConfigureText 回显。
 func (s *purchaseService) buyTypeRow(view *purchaseView, k purchaseKind, big bool) []inlineButton {
 	label := s.buyTypeKindLabel(view, k)
-	stock := s.buyTypeStock(view, k)
 	price := s.buyTypePlainPrice(view, k)
-	// 大按钮（随机/挑头）显示完整标签+库存+价格；小按钮（3-6头/CREDIT/DEBIT）显示库存+价格。
+	if k == pickKindBin {
+		// 挑头：只显示价格，库存留待输入 BIN 后回显。
+		label = fmt.Sprintf("%s %s", label, formatAmount(price, view.currency))
+		return []inlineButton{{
+			Text:         label,
+			CallbackData: cbBuyPrefix + string(k),
+		}}
+	}
+	stock := s.buyTypeStock(view, k)
+	// 大按钮（随机）显示完整标签+库存+价格；小按钮（3-6头/CREDIT/DEBIT）显示库存+价格。
 	if big {
 		label = fmt.Sprintf("%s [%s%d] %s", label, s.t(view, "purchase.stock_label"), stock, formatAmount(price, view.currency))
 	} else {

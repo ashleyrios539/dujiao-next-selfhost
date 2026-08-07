@@ -286,6 +286,18 @@ func keyboardContains(kb inlineKeyboard, text string) bool {
 	return false
 }
 
+// findKeyboardButton 返回键盘里第一个文本包含 substr 的按钮完整文本，未找到返回空串。
+func findKeyboardButton(kb inlineKeyboard, substr string) string {
+	for _, row := range kb.InlineKeyboard {
+		for _, btn := range row {
+			if containsStr(btn.Text, substr) {
+				return btn.Text
+			}
+		}
+	}
+	return ""
+}
+
 func TestPurchaseServiceTypeModeWithCountryReply(t *testing.T) {
 	product := &contract.ShopProduct{
 		ID: 10, Slug: "dx", Title: "迪士尼卡", Currency: "CNY",
@@ -1362,6 +1374,19 @@ func TestPurchaseServiceRenderDetailShowsTwoPriceLinesAndBuyButtons(t *testing.T
 		if !keyboardContains(mk, want) {
 			t.Fatalf("expected buy-type button %q in keyboard, got: %+v", want, mk)
 		}
+	}
+	// 挑头购买按钮不应显示库存（库存留待输入 BIN 后回显）。
+	binBtn := findKeyboardButton(mk, "挑头购买")
+	if binBtn == "" {
+		t.Fatalf("expected 挑头购买 button in keyboard, got: %+v", mk)
+	}
+	if strings.Contains(binBtn, "[可发") || strings.Contains(binBtn, "[库存") {
+		t.Fatalf("挑头购买 button must not show stock, got: %s", binBtn)
+	}
+	// 随机购买按钮应显示库存（含库存数量）。
+	randomBtn := findKeyboardButton(mk, "随机购买")
+	if !strings.Contains(randomBtn, "100") {
+		t.Fatalf("随机购买 button should show stock count, got: %s", randomBtn)
 	}
 }
 
