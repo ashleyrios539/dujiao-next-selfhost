@@ -98,6 +98,26 @@ reseller:
 
 要点：纯按钮步骤（浏览分类/商品、挑卡模式/品牌/卡类型、选渠道等）本就返回 `handled=false` 让主 Service 处理命令，不受影响；本次只补齐**文本输入**步骤的出口。epusdt 付款/充值二维码展示后会话已清空（`renderPaymentResult`/`createRechargeWithChannel` 内 `delete(s.sessions)`），不存在展示后被困问题。
 
+### Bot 购买流程重构为购买类型按钮 + 首位数字挑卡 + reply 键盘测活 + txt 发货修复（本分支后续新增）
+
+背景：原商品页是「配置面板」（基础价 + 当前选择明细 + 挑卡/测活 inline 开关 + 立即购买）。重构为「商品初始页文本两档价 + 8 个购买类型按钮（随机/挑头/3头/4头/5头/6头/CREDIT/DEBIT）」；测活改由 reply 键盘选择；首位数字（头=卡号首位）为端到端新增维度。同时修复 txt 发货链路（父/子订单 ID 不匹配导致静默不发卡密）。
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| txt 发货修复 | `app/container/native_bot_notifier.go` + `fulfillment/application/service.go` + `procurement/application/callback.go` | 断链：上游传父订单 ID 但履约记录在子订单上，`GetByOrderID(parentID)` 查不到 → 静默 return。改传子订单 ID，notifier 据此查履约 payload 并解析父订单 OrderNo 作为 txt 文件名 |
+| txt 发货测试 | `app/container/native_bot_notifier_test.go`（新建） | 4 用例：子订单 payload + 父订单号文件名、无履约静默跳过、无父订单用自身 OrderNo、无 token 跳过 |
+| 首位库存聚合 | `cardsecret/contract/{types,ports}.go` + `cardsecret/infrastructure/gormstore/store.go` | 新增 `BinHeadCount`/`CountByBinHead`（`GROUP BY substr(bin_prefix,1,1)`）；`buildPickQuery` 按位数区分 6 位精确 `=` vs 1-5 位前缀 `LIKE prefix%` |
+| 首位加价 | `catalog/product/domain/product.go` | 新增 `PickPriceKeyHead3/4/5/6` 加入 `pickPriceKeys`（`NormalizePickPrices` 自动保留，无需 GORM 迁移） |
+| 首位下单 | `order/application/order_service_validate.go` | `validPickBin` 放宽 1-6 位；BIN 加价按位数取 key（6 位→`bin`，1 位→`headN`）；6 位 BIN 与国家互斥，1 位首位可与国家共存（交集过滤） |
+| bot 端口 | `app/container/telegram_purchase_ports.go` + `telegram/webhook/contract/purchase.go` | 新增 `CountByBinHead`/`CountAvailableByBinHead` 端口 + `ShopBinHead` DTO |
+| bot 购买流程 | `telegram/webhook/application/purchase_service.go` | 重写 `renderDetail`（文本两档价，不显示当前选择/基础价/测活开关）+ `detailKeyboard`（8 购买类型按钮，各带库存+毛料价）；新增 `purchaseKind`/`selectBuyType`/`enterCheckOrConfirm`/`renderCheckChoice`/`handleCheckChoice`；`renderPickCountry` 翻页（一页6）+ `countryKeyboard` emoji 国旗；`buildPurchaseItems`/`validateOrder` 按 `pickKind` 构造 |
+| reply 键盘 | `telegram/webhook/application/helpers.go` | 新增 `replyKeyboard`/`replyKeyboardButton`/`replyKeyboardRemove` 类型（传输层 `SendMessage`/`SendPhotoBytes` 已 markup-agnostic，无需改 adapter/client） |
+| emoji 国旗 | `internal/shared/countries/countries.go` | 新增 `EmojiFlag(code)`（regional indicator 拼接，纯计算） |
+| 网页 DEBIT/CREDIT 合并 | `frontend/user/src/composables/useProductDetail.ts` + `i18n/locales/*.json` | `pickTypeOptions` 从 D/PD/C 三项合并为 DEBIT(提交D)/CREDIT(提交C) 两项；库存匹配已把 D 当 PD 超集 |
+| 管理端首位加价 | `frontend/admin/src/views/admin/components/ProductEditModal.vue` + `frontend/admin/src/i18n/index.ts` | `pickPriceKeys` 加 `head3/4/5/6`；三语加 `head3/4/5/6` 加价标签 |
+
+要点：DEBIT 提交 `PickCardTypes=["D"]`（库存匹配 D+PD）、CREDIT 提交 `["C"]`，加价分别取 `pick_prices["D"]`/`["C"]`——**管理端/后端无需为 DEBIT 改动**（复用 D 项）。首位挑卡走 BIN 路径：`PickBin=首位`(1位) + `PickCountry=国家`，后端按位数 LIKE 匹配、按首位取 `headN` 加价。`pickMode` 旧流程（type 模式选品牌/卡类型）保留兼容（`pickKind` 为空时回退）。测活选择用 reply 键盘（输入框弹出，点一下发文字），选择后发 `replyKeyboardRemove` 移除并进确认页。无需 GORM 迁移：`PickBin varchar(6)` 可存1位或6位，`PickPrices` 是 `jsonmap.JSON` 新 key 自动保留。
+
 ### 架构约束（必须遵守，改代码会触发失败）
 
 - **文件预算**：`internal/architecture/reseller_vertical_slice_test.go` 限制每个包的文件数
