@@ -86,6 +86,18 @@ reseller:
 
 要点：`callback_data` 上限 64 字节，`help:detail:<key>` 远低于此；`key` 由 schema `TrimSpace`。后台编辑后 bot **无需重启**即生效（`HandleUpdate` → `GetTelegramBotConfig` → 无缓存 GORM SELECT）。未改 schema/store/admin 前端（审计确认它们已正确）；未改 `NormalizeHelpItems` 的 12 条上限（潜在问题，当前默认 4 条）。
 
+### 购买会话文本输入步骤的「退出命令」拦截（本分支后续新增，bug 修复）
+
+背景：bot 在「卡头库存输入 BIN」「充值输入金额」「商品配置输入 BIN/国家码」等**文本输入**步骤里，会话常驻 `purchaseService`。原 `handleMessage` 只识别 `/shop`、`/recharge` 两个命令能重新进入，其它文本（含 `/start`、`/menu`、`/help`、`/cancel`）一律被当成本步骤的输入处理（如 `/start` 进 BIN 库存步骤会被 `isBinInput` 判否后反复回提示），**用户被困住、找不到退出路径**。同理充值金额步骤 `/start` 被当金额解析失败回提示；配置步骤 `/start` 走 `sendHelp` 仍不退出。
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| 退出命令拦截 | `webhook/application/purchase_service.go` `handleMessage` | 在任何会话文本处理之前拦截：`/cancel` → 直接 `cancel()`（清会话+提示）；`/start`、`/menu`、`/help` → 清空会话后返回 `handled=false` 交还主 Service 处理（`/start`/`/menu`/`/help` 由主 Service 正常响应）。这样所有「文本输入」步骤都能用命令退出 |
+| 入口提示加取消按钮 | `purchase_service.go` `enterBinStock`/`enterRecharge` | 卡头库存、充值金额的入口提示原本只有纯文本、无键盘；现附带「❌ 取消」inline 按钮（`callback_data=shop:cancel`），提供可见退出路径 |
+| 测试 | `webhook/application/purchase_service_test.go` | 9 个用例：BIN库存/充值/配置三处 `/start` 退出并清会话、BIN库存 `/cancel` 取消、BIN库存 `/menu`+`/help` 退出、无效非命令文本仍按 BIN 回提示（不误退出）、两处入口提示带取消按钮 |
+
+要点：纯按钮步骤（浏览分类/商品、挑卡模式/品牌/卡类型、选渠道等）本就返回 `handled=false` 让主 Service 处理命令，不受影响；本次只补齐**文本输入**步骤的出口。epusdt 付款/充值二维码展示后会话已清空（`renderPaymentResult`/`createRechargeWithChannel` 内 `delete(s.sessions)`），不存在展示后被困问题。
+
 ### 架构约束（必须遵守，改代码会触发失败）
 
 - **文件预算**：`internal/architecture/reseller_vertical_slice_test.go` 限制每个包的文件数

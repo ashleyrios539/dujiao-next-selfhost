@@ -227,6 +227,22 @@ func (s *purchaseService) handleMessage(ctx context.Context, token string, msg *
 		return true, s.enterRecharge(ctx, token, chatID, msg.From)
 	}
 
+	// 退出命令：/cancel 直接取消会话；/start、/menu、/help 清空会话后交还主 Service 处理。
+	// 必须在会话文本输入处理之前拦截，否则会卡在「输入 BIN / 充值金额 / 配置挑卡」等步骤里出不来。
+	switch {
+	case text == "/cancel" || strings.HasPrefix(text, "/cancel "):
+		return true, s.cancel(ctx, token, chatID)
+	case text == "/start" || strings.HasPrefix(text, "/start "),
+		text == "/menu" || strings.HasPrefix(text, "/menu "),
+		text == "/help" || strings.HasPrefix(text, "/help "):
+		if s.snapshot(chatID) != nil {
+			s.mu.Lock()
+			delete(s.sessions, chatID)
+			s.mu.Unlock()
+		}
+		return false, nil
+	}
+
 	view := s.snapshot(chatID)
 	if view == nil {
 		return false, nil
@@ -1899,8 +1915,11 @@ func (s *purchaseService) enterBinStock(ctx context.Context, token string, chatI
 	}
 	s.mu.Unlock()
 	msg := localizedText(purchaseTexts["purchase.binstock_title"], loc) + "\n\n" + localizedText(purchaseTexts["purchase.binstock_prompt"], loc)
+	markup := inlineKeyboard{InlineKeyboard: [][]inlineButton{{
+		{Text: "❌ " + localizedText(purchaseTexts["purchase.cancel"], loc), CallbackData: cbCancel},
+	}}}
 	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
-		contract.SendMessageOptions{DisableWebPagePreview: true})
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: markup})
 }
 
 // handleBinStockInput 处理卡头库存的 BIN 输入：遍历 bot 可见商品查可用库存并汇总。
@@ -2205,8 +2224,11 @@ func (s *purchaseService) enterRecharge(ctx context.Context, token string, chatI
 	}
 	s.mu.Unlock()
 	msg := localizedText(purchaseTexts["purchase.recharge_title"], loc) + "\n\n" + localizedText(purchaseTexts["purchase.recharge_amount_prompt"], loc)
+	markup := inlineKeyboard{InlineKeyboard: [][]inlineButton{{
+		{Text: "❌ " + localizedText(purchaseTexts["purchase.cancel"], loc), CallbackData: cbCancel},
+	}}}
 	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
-		contract.SendMessageOptions{DisableWebPagePreview: true})
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: markup})
 }
 
 // handleRechargeAmount 处理充值金额输入：校验后查渠道并发起。

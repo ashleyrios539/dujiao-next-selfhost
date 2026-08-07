@@ -1011,3 +1011,270 @@ func TestPurchaseServiceToggleLanguageReRendersShopStep(t *testing.T) {
 		t.Fatalf("expected re-rendered categories in English, got: %v", last)
 	}
 }
+
+// sendEscapeCommand 发送一个退出命令（/start / /menu / /help / /cancel）并返回是否被 bot 消费。
+func sendEscapeCommand(svc *purchaseService, chatID int64, cmd string) (bool, error) {
+	handled, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		Message: &webhookdomain.Message{
+			Chat: webhookdomain.Chat{ID: chatID, Type: "private"},
+			From: &webhookdomain.User{ID: 200, UserName: "alice"},
+			Text: cmd,
+		},
+	})
+	return handled, err
+}
+
+// newBinstockService 构造一个进入「卡头库存」步骤的 service。
+func newBinstockService(t *testing.T, bot *fakeBotAPI) *purchaseService {
+	t.Helper()
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog: &stubCatalog{products: []contract.ShopProduct{
+			{ID: 1, Title: "卡A", PriceAmount: "10.00", Currency: "CNY", PickEnabled: true},
+		}, binCountBy: map[string]int64{"123456": 5}},
+		Orders:   &stubOrders{},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+	}, bot, func() string { return "zh-CN" })
+	if err := svc.enterBinStock(context.Background(), "tok", 100); err != nil {
+		t.Fatalf("enterBinStock err: %v", err)
+	}
+	if svc.snapshot(100) == nil {
+		t.Fatalf("expected a bin_stock session")
+	}
+	return svc
+}
+
+// TestPurchaseServiceBinStockEscapeByStart 验证在「卡头库存」输入步骤发 /start 能退出并清空会话。
+func TestPurchaseServiceBinStockEscapeByStart(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newBinstockService(t, bot)
+	handled, err := sendEscapeCommand(svc, 100, "/start")
+	if err != nil {
+		t.Fatalf("/start err: %v", err)
+	}
+	// /start 应交还主 Service（handled=false），且会话被清空。
+	if handled {
+		t.Fatalf("expected /start to fall through to main Service (handled=false), got handled=true")
+	}
+	if svc.snapshot(100) != nil {
+		t.Fatalf("expected session cleared after /start, but session still exists")
+	}
+}
+
+// TestPurchaseServiceBinStockEscapeByCancel 验证 /cancel 直接取消并清空会话。
+func TestPurchaseServiceBinStockEscapeByCancel(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newBinstockService(t, bot)
+	handled, err := sendEscapeCommand(svc, 100, "/cancel")
+	if err != nil {
+		t.Fatalf("/cancel err: %v", err)
+	}
+	if !handled {
+		t.Fatalf("expected /cancel handled by purchase service, got handled=false")
+	}
+	if svc.snapshot(100) != nil {
+		t.Fatalf("expected session cleared after /cancel")
+	}
+	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "已取消购买") {
+		t.Fatalf("expected cancel confirmation, got: %v", last)
+	}
+}
+
+// TestPurchaseServiceBinStockEscapeByMenuAndHelp 验证 /menu 与 /help 同样能退出并清空会话。
+func TestPurchaseServiceBinStockEscapeByMenuAndHelp(t *testing.T) {
+	for _, cmd := range []string{"/menu", "/help"} {
+		bot := &fakeBotAPI{}
+		svc := newBinstockService(t, bot)
+		handled, err := sendEscapeCommand(svc, 100, cmd)
+		if err != nil {
+			t.Fatalf("%s err: %v", cmd, err)
+		}
+		if handled {
+			t.Fatalf("%s should fall through to main Service (handled=false)", cmd)
+		}
+		if svc.snapshot(100) != nil {
+			t.Fatalf("expected session cleared after %s", cmd)
+		}
+	}
+}
+
+// newRechargeService 构造一个进入「充值金额」输入步骤的 service。
+func newRechargeService(t *testing.T, bot *fakeBotAPI) *purchaseService {
+	t.Helper()
+	svc := newPurchaseService(contract.PurchasePorts{
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+		Settings: &stubSettings{cur: "USD", name: "shop"},
+		Recharge: &stubRecharge{recharge: &contract.ShopRecharge{}},
+	}, bot, func() string { return "zh-CN" })
+	if err := svc.enterRecharge(context.Background(), "tok", 100, &webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("enterRecharge err: %v", err)
+	}
+	if svc.snapshot(100) == nil {
+		t.Fatalf("expected a recharge_amount session")
+	}
+	return svc
+}
+
+// TestPurchaseServiceRechargeAmountEscapeByStart 验证在「充值金额」步骤发 /start 能退出。
+func TestPurchaseServiceRechargeAmountEscapeByStart(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newRechargeService(t, bot)
+	handled, err := sendEscapeCommand(svc, 100, "/start")
+	if err != nil {
+		t.Fatalf("/start err: %v", err)
+	}
+	if handled {
+		t.Fatalf("expected /start to fall through to main Service, got handled=true")
+	}
+	if svc.snapshot(100) != nil {
+		t.Fatalf("expected session cleared after /start in recharge step")
+	}
+}
+
+// TestPurchaseServiceRechargeAmountEscapeByCancel 验证 /cancel 在充值步骤也能取消。
+func TestPurchaseServiceRechargeAmountEscapeByCancel(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newRechargeService(t, bot)
+	handled, err := sendEscapeCommand(svc, 100, "/cancel")
+	if err != nil {
+		t.Fatalf("/cancel err: %v", err)
+	}
+	if !handled {
+		t.Fatalf("expected /cancel handled")
+	}
+	if svc.snapshot(100) != nil {
+		t.Fatalf("expected session cleared after /cancel in recharge step")
+	}
+}
+
+// newConfigureService 构造一个进入「商品配置（挑卡）」步骤的 service。
+func newConfigureService(t *testing.T, bot *fakeBotAPI) *purchaseService {
+	t.Helper()
+	product := &contract.ShopProduct{
+		ID: 10, Slug: "dx", Title: "迪士尼卡", Currency: "CNY",
+		PriceAmount: "50.00", FulfillmentType: "auto",
+		PickEnabled: true, PickPrices: map[string]string{"bin": "5.00"},
+	}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog: &stubCatalog{
+			cats:     []contract.ShopCategory{{ID: 1, Name: "卡密"}},
+			products: []contract.ShopProduct{*product}, bySlug: map[string]*contract.ShopProduct{"dx": product},
+		},
+		Orders:   &stubOrders{},
+		Payments: &stubPayments{},
+		Wallet:   &stubWallet{},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+		Settings: &stubSettings{cur: "CNY", name: "shop"},
+	}, bot, func() string { return "zh-CN" })
+	// 进入 /shop → 选分类 → 选商品 → 进入配置面板
+	if _, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200, UserName: "alice"}, Text: "/shop"},
+	}); err != nil {
+		t.Fatalf("/shop err: %v", err)
+	}
+	if _, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		CallbackQuery: &webhookdomain.CallbackQuery{
+			ID: "c1", From: webhookdomain.User{ID: 200, UserName: "alice"},
+			Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}}, Data: "shop:cat:1",
+		},
+	}); err != nil {
+		t.Fatalf("select cat err: %v", err)
+	}
+	if _, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		CallbackQuery: &webhookdomain.CallbackQuery{
+			ID: "c2", From: webhookdomain.User{ID: 200, UserName: "alice"},
+			Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}}, Data: "shop:prod:dx",
+		},
+	}); err != nil {
+		t.Fatalf("select prod err: %v", err)
+	}
+	if svc.snapshot(100) == nil || svc.snapshot(100).step != purchaseStepConfigure {
+		t.Fatalf("expected configure step, got step=%v", func() interface{} {
+			if v := svc.snapshot(100); v != nil {
+				return v.step
+			}
+			return "<nil>"
+		}())
+	}
+	return svc
+}
+
+// TestPurchaseServiceConfigureEscapeByStart 验证在「配置挑卡」步骤发 /start 能退出。
+func TestPurchaseServiceConfigureEscapeByStart(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newConfigureService(t, bot)
+	handled, err := sendEscapeCommand(svc, 100, "/start")
+	if err != nil {
+		t.Fatalf("/start err: %v", err)
+	}
+	if handled {
+		t.Fatalf("expected /start to fall through to main Service from configure step")
+	}
+	if svc.snapshot(100) != nil {
+		t.Fatalf("expected session cleared after /start from configure step")
+	}
+}
+
+// TestPurchaseServiceBinStockInvalidTextReprompts 验证无效文本（非命令）仍被按 BIN 处理（提示重输），不会悄悄退出。
+func TestPurchaseServiceBinStockInvalidTextReprompts(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newBinstockService(t, bot)
+	handled, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		Message: &webhookdomain.Message{
+			Chat: webhookdomain.Chat{ID: 100, Type: "private"},
+			From: &webhookdomain.User{ID: 200, UserName: "alice"},
+			Text: "hello",
+		},
+	})
+	if err != nil {
+		t.Fatalf("handle err: %v", err)
+	}
+	if !handled {
+		t.Fatalf("expected invalid text handled by bin stock step (reprompt), got handled=false")
+	}
+	// 无效输入不应清空会话（用户仍在等 BIN）
+	if svc.snapshot(100) == nil {
+		t.Fatalf("session should remain after invalid non-command text")
+	}
+	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "请输入 6 位卡头") {
+		t.Fatalf("expected re-prompt for BIN, got: %v", last)
+	}
+}
+
+// TestPurchaseServiceBinStockPromptHasCancelKeyboard 验证卡头库存入口提示带「取消」按钮，提供可见退出路径。
+func TestPurchaseServiceBinStockPromptHasCancelKeyboard(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog: &stubCatalog{}, Orders: &stubOrders{},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+	}, bot, func() string { return "zh-CN" })
+	if err := svc.enterBinStock(context.Background(), "tok", 100); err != nil {
+		t.Fatalf("enterBinStock err: %v", err)
+	}
+	if len(bot.markups) == 0 {
+		t.Fatalf("expected a cancel keyboard on bin stock prompt")
+	}
+	if !keyboardContains(bot.markups[len(bot.markups)-1], "取消") {
+		t.Fatalf("expected cancel button on bin stock prompt, got: %+v", bot.markups)
+	}
+}
+
+// TestPurchaseServiceRechargePromptHasCancelKeyboard 验证充值金额入口提示带「取消」按钮。
+func TestPurchaseServiceRechargePromptHasCancelKeyboard(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u"}},
+		Settings: &stubSettings{cur: "USD", name: "shop"},
+		Recharge: &stubRecharge{recharge: &contract.ShopRecharge{}},
+	}, bot, func() string { return "zh-CN" })
+	if err := svc.enterRecharge(context.Background(), "tok", 100, &webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("enterRecharge err: %v", err)
+	}
+	if len(bot.markups) == 0 {
+		t.Fatalf("expected a cancel keyboard on recharge prompt")
+	}
+	if !keyboardContains(bot.markups[len(bot.markups)-1], "取消") {
+		t.Fatalf("expected cancel button on recharge prompt, got: %+v", bot.markups)
+	}
+}
