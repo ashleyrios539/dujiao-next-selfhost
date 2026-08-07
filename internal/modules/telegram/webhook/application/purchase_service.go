@@ -168,6 +168,8 @@ type purchaseService struct {
 	ports  contract.PurchasePorts
 	botapi contract.BotAPIClient
 	locale func() string // 返回默认 locale
+	// sendMainMenu 由主 Service 注入：语言切换后立即以新语言展示主菜单（提示 + 快捷键盘）。
+	sendMainMenu func(ctx context.Context, token, chatID, locale string) error
 
 	mu       sync.Mutex
 	sessions map[int64]*purchaseSession
@@ -181,6 +183,11 @@ func newPurchaseService(ports contract.PurchasePorts, botapi contract.BotAPIClie
 		locale:   locale,
 		sessions: make(map[int64]*purchaseSession),
 	}
+}
+
+// setMainMenuRenderer 注入主菜单渲染回调（由主 Service 在 WithPurchase 时设置）。
+func (s *purchaseService) setMainMenuRenderer(fn func(ctx context.Context, token, chatID, locale string) error) {
+	s.sendMainMenu = fn
 }
 
 // handle 处理进入购买的命令或回调；返回 true 表示已消费该交互。
@@ -582,8 +589,8 @@ func (s *purchaseService) renderDetail(ctx context.Context, token string, chatID
 			sb.WriteString("\n")
 		}
 		if view.pickMode == contract.PickModeType {
-			sb.WriteString("  " + s.t(view, "purchase.brand") + ": " + orDefault(view.pickBrand, s.t(view, "purchase.not_selected")) + "\n")
-			sb.WriteString("  " + s.t(view, "purchase.card_type") + ": " + orDefault(view.pickCardType, s.t(view, "purchase.not_selected")) + "\n")
+			sb.WriteString("  " + s.t(view, "purchase.brand") + ": " + orDefault(s.pickBrandName(view, view.pickBrand), s.t(view, "purchase.not_selected")) + "\n")
+			sb.WriteString("  " + s.t(view, "purchase.card_type") + ": " + orDefault(s.pickCardTypeName(view, view.pickCardType), s.t(view, "purchase.not_selected")) + "\n")
 		}
 	}
 
@@ -624,6 +631,40 @@ func pickModeLabel(view *purchaseView, s *purchaseService) string {
 		return s.t(view, "purchase.pick_mode_type")
 	}
 	return s.t(view, "purchase.not_selected")
+}
+
+// pickBrandName 品牌选项的本地化名称（与网页端一致：random 走 i18n，品牌名固定不翻译）。
+func (s *purchaseService) pickBrandName(view *purchaseView, key string) string {
+	switch key {
+	case "random":
+		return s.t(view, "purchase.pick_brand_random")
+	case "visa":
+		return "Visa"
+	case "mastercard":
+		return "Mastercard"
+	case "discover":
+		return "Discover"
+	case "amex":
+		return "AMEX"
+	case "jcb":
+		return "JCB"
+	}
+	return key
+}
+
+// pickCardTypeName 卡类型选项的本地化名称（与网页端 i18n 文案一致）。
+func (s *purchaseService) pickCardTypeName(view *purchaseView, key string) string {
+	switch key {
+	case "random":
+		return s.t(view, "purchase.pick_type_random")
+	case "D":
+		return s.t(view, "purchase.pick_type_d")
+	case "PD":
+		return s.t(view, "purchase.pick_type_pd")
+	case "C":
+		return s.t(view, "purchase.pick_type_c")
+	}
+	return key
 }
 
 // pickUnitSurcharge 计算挑卡加价。
@@ -978,10 +1019,18 @@ func (s *purchaseService) confirmOrder(ctx context.Context, token string, chatID
 		if it.PickCountry != "" {
 			sb.WriteString(" [" + it.PickCountry)
 			if len(it.PickBrands) > 0 {
-				sb.WriteString(" " + strings.Join(it.PickBrands, "/"))
+				names := make([]string, 0, len(it.PickBrands))
+				for _, b := range it.PickBrands {
+					names = append(names, s.pickBrandName(view, b))
+				}
+				sb.WriteString(" " + strings.Join(names, "/"))
 			}
 			if len(it.PickCardTypes) > 0 {
-				sb.WriteString(" " + strings.Join(it.PickCardTypes, "/"))
+				names := make([]string, 0, len(it.PickCardTypes))
+				for _, c := range it.PickCardTypes {
+					names = append(names, s.pickCardTypeName(view, c))
+				}
+				sb.WriteString(" " + strings.Join(names, "/"))
 			}
 			sb.WriteString("]")
 		}
@@ -1213,6 +1262,7 @@ func (s *purchaseService) renderPaymentResult(ctx context.Context, token string,
 			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_expires"], loc) + " " + result.ExpiresAt + "\n")
 		}
 		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.epusdt_hint"], loc))
+		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.epusdt_qr_hint"], loc))
 
 		s.mu.Lock()
 		delete(s.sessions, chatID)
@@ -1227,12 +1277,8 @@ func (s *purchaseService) renderPaymentResult(ctx context.Context, token string,
 			{Text: localizedText(purchaseTexts["purchase.orders_title"], loc), CallbackData: cbOrders},
 			{Text: localizedText(purchaseTexts["purchase.exit_home"], loc), CallbackData: cbMenu},
 		})
-		if err := s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
-			contract.SendMessageOptions{DisableWebPagePreview: true, ParseMode: "Markdown", ReplyMarkup: inlineKeyboard{InlineKeyboard: rows}}); err != nil {
-			return err
-		}
-		// 附带收款地址二维码（进程内生成，失败静默跳过，不影响付款信息展示）。
-		return s.sendAddressQR(ctx, token, chatID, loc, result.ReceiveAddress)
+		// 二维码作为主图、说明文字作为 caption、按钮挂在图片消息上 —— 一条消息完成付款信息展示。
+		return s.sendEpusdtQR(ctx, token, chatID, loc, result.ReceiveAddress, sb.String(), rows)
 	}
 
 	sb.WriteString(localizedText(purchaseTexts["purchase.paid_title"], loc) + "\n\n")
@@ -1540,7 +1586,7 @@ func (s *purchaseService) brandKeyboard(view *purchaseView) inlineKeyboard {
 	row := make([]inlineButton, 0, 2)
 	for _, b := range view.pickStock.Brands {
 		row = append(row, inlineButton{
-			Text:         b.Name,
+			Text:         s.pickBrandName(view, b.Key),
 			CallbackData: cbBrandPrefix + b.Key,
 		})
 		if len(row) == 2 {
@@ -1567,7 +1613,7 @@ func (s *purchaseService) cardTypeKeyboard(view *purchaseView) inlineKeyboard {
 	row := make([]inlineButton, 0, 2)
 	for _, t := range view.pickStock.CardTypes {
 		row = append(row, inlineButton{
-			Text:         t.Name,
+			Text:         s.pickCardTypeName(view, t.Key),
 			CallbackData: cbCTypePrefix + t.Key,
 		})
 		if len(row) == 2 {
@@ -1747,6 +1793,11 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.brand_desc":       {"zh-CN": "选择品牌：", "zh-TW": "選擇品牌：", "en-US": "Select a brand:"},
 	"purchase.card_type_title":  {"zh-CN": "选择卡类型", "zh-TW": "選擇卡類型", "en-US": "Select card type"},
 	"purchase.card_type_desc":   {"zh-CN": "选择卡类型：", "zh-TW": "選擇卡類型：", "en-US": "Select a card type:"},
+	"purchase.pick_brand_random": {"zh-CN": "随机", "zh-TW": "隨機", "en-US": "Random"},
+	"purchase.pick_type_random":  {"zh-CN": "随机", "zh-TW": "隨機", "en-US": "Random"},
+	"purchase.pick_type_d":       {"zh-CN": "D卡（含预付）", "zh-TW": "D卡（含預付）", "en-US": "D (incl. prepaid)"},
+	"purchase.pick_type_pd":      {"zh-CN": "纯D（不含预付）", "zh-TW": "純D（不含預付）", "en-US": "Pure D (excl. prepaid)"},
+	"purchase.pick_type_c":       {"zh-CN": "纯C", "zh-TW": "純C", "en-US": "Pure C"},
 	"purchase.incomplete":       {"zh-CN": "请先完成全部必选配置（挑卡模式/国家/品牌/卡类型/BIN）。", "zh-TW": "請先完成全部必選配置（挑卡模式/國家/品牌/卡類型/BIN）。", "en-US": "Please complete all required selections first."},
 	"purchase.country_invalid":  {"zh-CN": "该国家代码不在可选范围内，请重试。", "zh-TW": "該國家代碼不在可選範圍內，請重試。", "en-US": "Country code not available, try again."},
 	"purchase.group_not_supported": {"zh-CN": "🛒 购买功能请在私聊中使用，群组内暂不支持。", "zh-TW": "🛒 購買功能請在私聊中使用，群組內暫不支援。", "en-US": "🛒 Please buy in a private chat with the bot."},
@@ -1797,6 +1848,11 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.epusdt_copy_hint":  {"zh-CN": "👆 点击上方地址即可一键复制。", "zh-TW": "👆 點擊上方地址即可一鍵複製。", "en-US": "👆 Tap the address above to copy it."},
 	"purchase.epusdt_qr_hint":    {"zh-CN": "📲 USDT（TRC20）收款二维码，扫码转账。", "zh-TW": "📲 USDT（TRC20）收款 QR Code，掃碼轉帳。", "en-US": "📲 USDT (TRC20) receive QR code, scan to pay."},
 	"purchase.exit_home":         {"zh-CN": "🏠 返回主页", "zh-TW": "🏠 返回主頁", "en-US": "🏠 Home"},
+	"purchase.menu_shop":         {"zh-CN": "🛍️ 开始购物", "zh-TW": "🛍️ 開始購物", "en-US": "🛍️ Shop"},
+	"purchase.menu_binstock":     {"zh-CN": "📦 卡头库存", "zh-TW": "📦 卡頭庫存", "en-US": "📦 BIN Stock"},
+	"purchase.menu_wallet":       {"zh-CN": "💰 我的钱包", "zh-TW": "💰 我的錢包", "en-US": "💰 Wallet"},
+	"purchase.menu_orders":       {"zh-CN": "📋 我的订单", "zh-TW": "📋 我的訂單", "en-US": "📋 Orders"},
+	"purchase.menu_help":         {"zh-CN": "❓ 帮助中心", "zh-TW": "❓ 幫助中心", "en-US": "❓ Help"},
 	"purchase.epusdt_network":    {"zh-CN": "网络", "zh-TW": "網路", "en-US": "Network"},
 	"purchase.epusdt_expires":    {"zh-CN": "过期时间", "zh-TW": "過期時間", "en-US": "Expires at"},
 	"purchase.epusdt_hint":       {"zh-CN": "请将应付 USDT 转账至上方地址，支付成功后订单自动发货，卡密将以 txt 文件推送到本对话。", "zh-TW": "請將應付 USDT 轉帳至上方地址，支付成功後訂單自動發貨，卡密將以 txt 檔案推送到本對話。", "en-US": "Transfer the payable USDT to the address above. Once paid, your order is fulfilled automatically and cards are delivered here as a txt file."},
@@ -2004,19 +2060,19 @@ func truncateDescription(desc string) string {
 	return desc[:maxLen] + "\n…"
 }
 
-// sendAddressQR 生成并发送收款地址二维码图片（best-effort：生成或发送失败一律静默忽略，
-// 不阻断已展示的付款/充值信息，也不让 webhook 因二维码失败而重试导致重复下单）。
-func (s *purchaseService) sendAddressQR(ctx context.Context, token string, chatID int64, loc, address string) error {
-	addr := strings.TrimSpace(address)
-	if addr == "" {
-		return nil
-	}
-	pngBytes, err := buildQRCodePNG(addr, 360)
+// sendEpusdtQR 把付款/充值说明文字作为 caption、收款地址二维码作为主图，合并为一条 sendPhoto 消息
+// （二维码生成或图片发送失败时退化为纯文本消息，保证付款信息仍可见；不向上抛错避免 webhook 重试造成重复下单）。
+func (s *purchaseService) sendEpusdtQR(ctx context.Context, token string, chatID int64, loc, address, caption string, rows [][]inlineButton) error {
+	opts := contract.SendMessageOptions{DisableWebPagePreview: true, ParseMode: "Markdown", ReplyMarkup: inlineKeyboard{InlineKeyboard: rows}}
+	chatIDStr := fmt.Sprintf("%d", chatID)
+	pngBytes, err := buildQRCodePNG(address, 360)
 	if err != nil {
-		return nil
+		return s.botapi.SendMessage(ctx, token, chatIDStr, caption, opts)
 	}
-	_ = s.botapi.SendPhotoBytes(ctx, token, fmt.Sprintf("%d", chatID), "usdt_qrcode.png", pngBytes,
-		localizedText(purchaseTexts["purchase.epusdt_qr_hint"], loc), contract.SendMessageOptions{})
+	if err := s.botapi.SendPhotoBytes(ctx, token, chatIDStr, "usdt_qrcode.png", pngBytes, caption, opts); err != nil {
+		// 图片发送失败：退化为纯文本消息。
+		return s.botapi.SendMessage(ctx, token, chatIDStr, caption, opts)
+	}
 	return nil
 }
 
@@ -2038,6 +2094,7 @@ func buildQRCodePNG(content string, size int) ([]byte, error) {
 }
 
 // toggleLanguage 在中/英之间切换，并持久化到商城账号。
+// 切换后立即让用户看到效果：处于购买流程中以新语言重渲当前步骤，否则发送新语言的主菜单。
 func (s *purchaseService) toggleLanguage(ctx context.Context, token string, chatID int64, from webhookdomain.User) error {
 	if s.ports.Identity == nil {
 		return s.sendError(ctx, token, chatID, nil, "purchase.unavailable")
@@ -2065,9 +2122,58 @@ func (s *purchaseService) toggleLanguage(ctx context.Context, token string, chat
 		sess.locale = newLocale
 	}
 	s.mu.Unlock()
+	// 处于购买流程中：以新语言重渲当前步骤（也顺带刷新最新数据）。
+	if s.snapshot(chatID) != nil {
+		if err := s.renderCurrentStep(ctx, token, chatID); err == nil {
+			return nil
+		}
+	}
+	// 无会话或重渲染失败：直接发送新语言的主菜单，让界面与按钮立即切换。
+	if s.sendMainMenu != nil {
+		return s.sendMainMenu(ctx, token, fmt.Sprintf("%d", chatID), newLocale)
+	}
 	msg := localizedText(purchaseTexts["purchase.lang_switched"], newLocale)
 	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
 		contract.SendMessageOptions{DisableWebPagePreview: true})
+}
+
+// renderCurrentStep 按会话当前步骤以最新数据重渲（语言切换时复用，保证内容实时与网页一致）。
+func (s *purchaseService) renderCurrentStep(ctx context.Context, token string, chatID int64) error {
+	view := s.snapshot(chatID)
+	if view == nil {
+		return nil
+	}
+	switch view.step {
+	case purchaseStepBrowseCategory:
+		return s.renderCategories(ctx, token, chatID)
+	case purchaseStepBrowseProduct:
+		return s.renderProducts(ctx, token, chatID, view.page)
+	case purchaseStepConfigure:
+		return s.renderDetail(ctx, token, chatID)
+	case purchaseStepPickMode:
+		return s.renderPickMode(ctx, token, chatID)
+	case purchaseStepPickCountry:
+		return s.renderPickCountry(ctx, token, chatID)
+	case purchaseStepPickBrand:
+		return s.renderPickBrand(ctx, token, chatID)
+	case purchaseStepPickCardType:
+		return s.renderPickCardType(ctx, token, chatID)
+	case purchaseStepPickChannel:
+		if s.ports.Payments == nil {
+			return nil
+		}
+		channels, err := s.ports.Payments.ListPaymentChannels(ctx)
+		if err != nil {
+			return err
+		}
+		epusdtChannels := filterEpusdtChannels(channels)
+		msg := localizedText(purchaseTexts["purchase.select_channel_title"], view.locale)
+		return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), msg,
+			contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: s.channelKeyboard(epusdtChannels, view.locale)})
+	case purchaseStepConfirm:
+		return s.confirmOrder(ctx, token, chatID)
+	}
+	return nil
 }
 
 // enterRecharge 进入充值：解析用户 + 提示输入金额。
@@ -2213,6 +2319,7 @@ func (s *purchaseService) createRechargeWithChannel(ctx context.Context, token s
 			sb.WriteString(localizedText(purchaseTexts["purchase.epusdt_expires"], loc) + " " + recharge.ExpiresAt + "\n")
 		}
 		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.recharge_epusdt_hint"], loc))
+		sb.WriteString("\n" + localizedText(purchaseTexts["purchase.epusdt_qr_hint"], loc))
 
 		// 展示付款页后立即清空会话：避免用户再次输入数字时重复创建充值订单，
 		// 之后任意文本输入都会回退到主菜单（/start 页面）。
@@ -2226,12 +2333,8 @@ func (s *purchaseService) createRechargeWithChannel(ctx context.Context, token s
 		}
 		rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.recharge_check"], loc), CallbackData: cbRechargeCheck + recharge.RechargeNo}})
 		rows = append(rows, []inlineButton{{Text: localizedText(purchaseTexts["purchase.exit_home"], loc), CallbackData: cbMenu}})
-		if err := s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), sb.String(),
-			contract.SendMessageOptions{DisableWebPagePreview: true, ParseMode: "Markdown", ReplyMarkup: inlineKeyboard{InlineKeyboard: rows}}); err != nil {
-			return err
-		}
-		// 附带收款地址二维码（进程内生成，失败静默跳过，不影响充值信息展示）。
-		return s.sendAddressQR(ctx, token, chatID, loc, recharge.ReceiveAddress)
+		// 二维码作为主图、说明文字作为 caption、按钮挂在图片消息上 —— 一条消息完成充值信息展示。
+		return s.sendEpusdtQR(ctx, token, chatID, loc, recharge.ReceiveAddress, sb.String(), rows)
 	}
 
 	var sb strings.Builder

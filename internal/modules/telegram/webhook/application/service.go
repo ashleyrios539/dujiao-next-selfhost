@@ -42,6 +42,17 @@ func (s *Service) WithPurchase(ports contract.PurchasePorts) *Service {
 		}
 		return resolveLocale(cfg.DefaultLocale)
 	})
+	// 语言切换后立即以新语言展示主菜单（提示 + 快捷键盘），让用户直接看到切换效果。
+	s.purchase.setMainMenuRenderer(func(ctx context.Context, token, chatID, locale string) error {
+		cfg, err := s.config.GetTelegramBotConfig()
+		if err != nil {
+			cfg = settingsmessaging.TelegramBotConfigSetting{}
+		}
+		return s.botapi.SendMessage(ctx, token, chatID, mainMenuHint(cfg, locale), contract.SendMessageOptions{
+			DisableWebPagePreview: true,
+			ReplyMarkup:           s.startKeyboard(locale),
+		})
+	})
 	return s
 }
 
@@ -214,6 +225,8 @@ func (s *Service) handleCallbackQuery(ctx context.Context, token string, cfg set
 		alertText = ""
 	case "menu":
 		alertText = ""
+	case "switch_language":
+		alertText = ""
 	default:
 		if isBuiltinMenuKey(data) {
 			alertText = localizedText(builtinMenuHint(data), locale)
@@ -236,6 +249,8 @@ func (s *Service) handleCallbackQuery(ctx context.Context, token string, cfg set
 						return s.purchase.StartFromMenu(ctx, token, chatID64, cb.From)
 					case "my_wallet":
 						return s.purchase.ShowWallet(ctx, token, chatID64, cb.From)
+					case "switch_language":
+						return s.purchase.toggleLanguage(ctx, token, chatID64, cb.From)
 					}
 				}
 			}
@@ -255,16 +270,16 @@ func (s *Service) startKeyboard(locale string) inlineKeyboard {
 	}
 	rows := [][]inlineButton{
 		{
-			{Text: "🛍️ 开始购物", CallbackData: "shop:start"},
-			{Text: "📦 卡头库存", CallbackData: "shop:binstock"},
+			{Text: localizedText(purchaseTexts["purchase.menu_shop"], locale), CallbackData: "shop:start"},
+			{Text: localizedText(purchaseTexts["purchase.menu_binstock"], locale), CallbackData: "shop:binstock"},
 		},
 		{
-			{Text: "💰 我的钱包", CallbackData: "shop:wallet"},
-			{Text: "📋 我的订单", CallbackData: "shop:orders"},
+			{Text: localizedText(purchaseTexts["purchase.menu_wallet"], locale), CallbackData: "shop:wallet"},
+			{Text: localizedText(purchaseTexts["purchase.menu_orders"], locale), CallbackData: "shop:orders"},
 		},
 		{
 			{Text: langLabel, CallbackData: "shop:lang"},
-			{Text: "❓ 帮助中心", CallbackData: "help"},
+			{Text: localizedText(purchaseTexts["purchase.menu_help"], locale), CallbackData: "help"},
 		},
 	}
 	return inlineKeyboard{InlineKeyboard: rows}

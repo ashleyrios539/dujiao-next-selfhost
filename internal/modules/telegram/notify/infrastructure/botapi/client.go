@@ -210,6 +210,15 @@ func (s *Client) SendPhotoBytes(ctx context.Context, botToken, chatID, fileName 
 			return err
 		}
 	}
+	if options.ReplyMarkup != nil {
+		markupBytes, err := json.Marshal(options.ReplyMarkup)
+		if err != nil {
+			return fmt.Errorf("%w: marshal reply markup failed: %v", notifycontract.ErrNotifySendFailed, err)
+		}
+		if err := writer.WriteField("reply_markup", string(markupBytes)); err != nil {
+			return err
+		}
+	}
 	part, err := writer.CreateFormFile("photo", fileName)
 	if err != nil {
 		return err

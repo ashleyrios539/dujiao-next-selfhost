@@ -59,10 +59,18 @@ reseller:
 | bot 充值 | 同上 | `/recharge` 同样只走 epusdt，聊天内展示充值 USDT 金额与收款地址 |
 | bot 商品简介 | `internal/app/container/telegram_purchase_ports.go` + `purchase_service.go` | `ShopProduct.Description` 由 `DescriptionJSON` 填充，`renderDetail` 展示（与网站同源自动同步） |
 | txt 发货 | `internal/modules/telegram/notify/infrastructure/botapi/client.go` + `internal/app/container/native_bot_notifier.go` | 新增 `SendDocumentBytes`（sendDocument multipart 内存文件）；发货后把卡密 payload 以 `卡密_<订单号>.txt` 文件推送到用户私聊 |
-| 二维码+复制 | `purchase_service.go` + `botapi/client.go` + `webhook/contract/ports.go` + `webhook/infrastructure/botapi_adapter.go` | epusdt 付款/充值页把地址渲染为 Markdown 代码块（点按即复制），并附带**进程内生成**的收款地址二维码图片（`buildQRCodePNG` 用 `boombuler/barcode`，新增直接依赖，不依赖外部二维码服务）；`BotAPIClient` 新增 `SendPhotoBytes`（sendPhoto multipart） |
+| 二维码+复制 | `purchase_service.go` + `botapi/client.go` + `webhook/contract/ports.go` + `webhook/infrastructure/botapi_adapter.go` | epusdt 付款/充值页把地址渲染为 Markdown 代码块（点按即复制），并附带**进程内生成**的收款地址二维码图片（`buildQRCodePNG` 用 `boombuler/barcode`，新增直接依赖，不依赖外部二维码服务）；`BotAPIClient` 新增 `SendPhotoBytes`（sendPhoto multipart，支持 caption + reply_markup） |
 
 要点：epusdt 付款关键字段放在 `ProviderPayload` **顶层**（非 `data` 子对象），bot 端读取不依赖具体网关响应结构；GMPay 创建响应可能不含 `network`，adapter 已回退渠道配置 `network`（tron）。
-付款/充值页**只显示应付 USDT 一行**（不显示 store 币种行，避免币种混淆）；充值输入提示明确为「请输入充值 USDT 金额」。**充值付款页展示后立即清空会话**：用户再输入数字不会重复创建充值订单，任意文本输入自动回退主菜单（/start 页面）；付款/充值页均带「🏠 返回主页」按钮（callback `menu`，非 `shop:` 前缀，由主 Service 处理）。二维码发送为 best-effort（失败静默忽略，避免 webhook 重试造成重复下单）。
+付款/充值页**只显示应付 USDT 一行**（不显示 store 币种行，避免币种混淆）；充值输入提示明确为「请输入充值 USDT 金额」。**充值付款页展示后立即清空会话**：用户再输入数字不会重复创建充值订单，任意文本输入自动回退主菜单（/start 页面）；付款/充值页均带「🏠 返回主页」按钮（callback `menu`，非 `shop:` 前缀，由主 Service 处理）。
+
+### 付款/充值单条二维码图片消息 + 挑卡多语言化 + 语言切换立即生效（本分支后续新增）
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| 单条图片消息 | `purchase_service.go` + `botapi/client.go` | epusdt 付款/充值改为**一条 sendPhoto**：二维码为主图、说明文字（金额/地址/复制提示/网络/过期/操作提示）放进 **caption**、按钮挂到图片消息上；`sendEpusdtQR` 生成二维码失败或图片发送失败时**退化为纯文本消息**（保证付款信息仍可见，不向上抛错避免 webhook 重试造成重复下单） |
+| 挑卡选项多语言化 | `purchase_service.go` | 品牌/卡类型选项名随用户语言本地化（与网页端一致：品牌 `random` 走 i18n、Visa/Mastercard/Discover/AMEX/JCB 固定不翻译；卡类型 `D/PD/C` 走 i18n）。新增 `pickBrandName`/`pickCardTypeName`，作用于 `brandKeyboard`/`cardTypeKeyboard`/`renderDetail` 摘要/`confirmOrder` 确认单摘要；`GetPickStock` 里的中文名仅作未知 key 回退 |
+| 语言切换立即生效 | `service.go` + `purchase_service.go` | `startKeyboard` 标签多语言化（`purchase.menu_shop/binstock/wallet/orders/help`）；`toggleLanguage` 切换后**立即以新语言重渲当前购买步骤**（`renderCurrentStep`，顺带刷新最新数据），无会话或重渲失败则发送**新语言主菜单**（`sendMainMenu` 回调由 `WithPurchase` 注入，含 hint + 快捷键盘）；`/menu` 的 `switch_language` 菜单项也接入切换（原来只回复提示文本） |
 
 ### 架构约束（必须遵守，改代码会触发失败）
 

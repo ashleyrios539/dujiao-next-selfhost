@@ -110,8 +110,11 @@ func (f *fakeBotAPI) SendMessage(_ context.Context, _, _ string, message string,
 	}
 	return nil
 }
-func (f *fakeBotAPI) SendPhotoBytes(_ context.Context, _, _, _ string, _ []byte, caption string, _ contract.SendMessageOptions) error {
+func (f *fakeBotAPI) SendPhotoBytes(_ context.Context, _, _, _ string, _ []byte, caption string, opts contract.SendMessageOptions) error {
 	f.photos = append(f.photos, caption)
+	if mk, ok := opts.ReplyMarkup.(inlineKeyboard); ok {
+		f.markups = append(f.markups, mk)
+	}
 	return nil
 }
 func (f *fakeBotAPI) AnswerCallbackQuery(context.Context, string, string, contract.AnswerCallbackOptions) error {
@@ -578,10 +581,14 @@ func TestPurchaseServicePayOnlineEpusdtShowsAddress(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("pay online err: %v", err)
 	}
-	last := bot.sent[len(bot.sent)-1]
+	// epusdt 付款信息现在作为图片消息的 caption 发送（二维码为主图，一条消息）。
+	if len(bot.photos) != 1 {
+		t.Fatalf("expected 1 photo message with payment caption, got: %d", len(bot.photos))
+	}
+	last := bot.photos[0]
 	for _, want := range []string{"TLq32V4saMHPS71juNAZ6KBmhTTSLCRkp6", "6.98", "USDT", "TRC20", "O3"} {
 		if !containsStr(last, want) {
-			t.Fatalf("expected %q in epusdt payment message, got: %v", want, last)
+			t.Fatalf("expected %q in epusdt payment caption, got: %v", want, last)
 		}
 	}
 	// 地址应为代码块（可点按复制），且不再出现 store 币种金额行
@@ -590,10 +597,6 @@ func TestPurchaseServicePayOnlineEpusdtShowsAddress(t *testing.T) {
 	}
 	if containsStr(last, "50.00 CNY") {
 		t.Fatalf("store currency line should be removed, got: %v", last)
-	}
-	// 二维码图片已发送
-	if len(bot.photos) != 1 {
-		t.Fatalf("expected 1 QR photo, got: %d", len(bot.photos))
 	}
 	markup := bot.markups[len(bot.markups)-1]
 	if !keyboardContains(markup, "刷新支付状态") {
@@ -842,10 +845,14 @@ func TestPurchaseServiceRechargeEpusdtShowsAddressAndQR(t *testing.T) {
 	if err := svc.handleRechargeAmount(context.Background(), "tok", view, "100", &webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
 		t.Fatalf("handleRechargeAmount err: %v", err)
 	}
-	last := bot.sent[len(bot.sent)-1]
+	// 充值信息现在作为图片消息的 caption 发送（二维码为主图，一条消息）。
+	if len(bot.photos) != 1 {
+		t.Fatalf("expected 1 photo message with recharge caption, got: %d", len(bot.photos))
+	}
+	last := bot.photos[0]
 	for _, want := range []string{"TLq32V4saMHPS71juNAZ6KBmhTTSLCRkp6", "6.98", "USDT", "TRC20", "WR2"} {
 		if !containsStr(last, want) {
-			t.Fatalf("expected %q in recharge message, got: %v", want, last)
+			t.Fatalf("expected %q in recharge caption, got: %v", want, last)
 		}
 	}
 	if !containsStr(last, "```") {
@@ -857,9 +864,6 @@ func TestPurchaseServiceRechargeEpusdtShowsAddressAndQR(t *testing.T) {
 	markup := bot.markups[len(bot.markups)-1]
 	if !keyboardContains(markup, "返回主页") {
 		t.Fatalf("expected exit home button, got: %+v", markup)
-	}
-	if len(bot.photos) != 1 {
-		t.Fatalf("expected 1 QR photo, got: %d", len(bot.photos))
 	}
 
 	// 付款页展示后会话已清空：再次输入数字应未被消费（回退主菜单），且不重复创建充值订单。
@@ -901,5 +905,109 @@ func TestPurchaseServiceBinStock(t *testing.T) {
 	last := bot.sent[len(bot.sent)-1]
 	if !containsStr(last, "5") || !containsStr(last, "卡A") {
 		t.Fatalf("expected bin stock summary, got: %v", last)
+	}
+}
+
+func TestPurchaseServicePickOptionLabelsLocalized(t *testing.T) {
+	svc := newPurchaseService(contract.PurchasePorts{}, &fakeBotAPI{}, func() string { return "zh-CN" })
+	stock := &contract.ShopPickStock{
+		Brands: []contract.ShopPickBrand{
+			{Key: "random", Name: "随机"},
+			{Key: "visa", Name: "Visa"},
+			{Key: "mastercard", Name: "Mastercard"},
+		},
+		CardTypes: []contract.ShopPickCardType{
+			{Key: "random", Name: "随机"},
+			{Key: "D", Name: "D卡（含预付）"},
+			{Key: "PD", Name: "纯D（不含预付）"},
+			{Key: "C", Name: "纯C"},
+		},
+	}
+	zh := &purchaseView{locale: "zh-CN", pickStock: stock}
+	en := &purchaseView{locale: "en-US", pickStock: stock}
+
+	zhBrands := svc.brandKeyboard(zh)
+	if !keyboardContains(zhBrands, "随机") {
+		t.Fatalf("zh brand keyboard should show 随机, got: %+v", zhBrands)
+	}
+	enBrands := svc.brandKeyboard(en)
+	if keyboardContains(enBrands, "随机") {
+		t.Fatalf("en brand keyboard should not show 随机, got: %+v", enBrands)
+	}
+	for _, want := range []string{"Random", "Visa", "Mastercard"} {
+		if !keyboardContains(enBrands, want) {
+			t.Fatalf("en brand keyboard should show %q, got: %+v", want, enBrands)
+		}
+	}
+
+	enTypes := svc.cardTypeKeyboard(en)
+	if keyboardContains(enTypes, "D卡（含预付）") {
+		t.Fatalf("en card type keyboard should not show Chinese labels, got: %+v", enTypes)
+	}
+	for _, want := range []string{"Random", "D (incl. prepaid)", "Pure D (excl. prepaid)", "Pure C"} {
+		if !keyboardContains(enTypes, want) {
+			t.Fatalf("en card type keyboard should show %q, got: %+v", want, enTypes)
+		}
+	}
+}
+
+func TestPurchaseServiceToggleLanguageSendsNewLocaleMenu(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u", Locale: "zh-CN"}},
+	}, bot, func() string { return "zh-CN" })
+	var gotLocale, gotChatID string
+	svc.setMainMenuRenderer(func(_ context.Context, _, chatID, locale string) error {
+		gotChatID = chatID
+		gotLocale = locale
+		return nil
+	})
+	if err := svc.toggleLanguage(context.Background(), "tok", 100, webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("toggleLanguage err: %v", err)
+	}
+	if gotLocale != "en-US" {
+		t.Fatalf("expected main menu in en-US, got %q", gotLocale)
+	}
+	if gotChatID != "100" {
+		t.Fatalf("expected chatID 100, got %q", gotChatID)
+	}
+
+	// 反向切换回中文
+	svc2 := newPurchaseService(contract.PurchasePorts{
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u", Locale: "en-US"}},
+	}, &fakeBotAPI{}, func() string { return "en-US" })
+	gotLocale = ""
+	svc2.setMainMenuRenderer(func(_ context.Context, _, _, locale string) error {
+		gotLocale = locale
+		return nil
+	})
+	if err := svc2.toggleLanguage(context.Background(), "tok", 100, webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("toggleLanguage en->zh err: %v", err)
+	}
+	if gotLocale != "zh-CN" {
+		t.Fatalf("expected main menu in zh-CN, got %q", gotLocale)
+	}
+}
+
+func TestPurchaseServiceToggleLanguageReRendersShopStep(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newPurchaseService(contract.PurchasePorts{
+		Catalog: &stubCatalog{cats: []contract.ShopCategory{{ID: 1, Name: "Cards"}}},
+		Orders:  &stubOrders{},
+		Identity: &stubIdentity{user: &contract.PurchaseUser{ID: 7, DisplayName: "u", Locale: "zh-CN"}},
+	}, bot, func() string { return "zh-CN" })
+	// 进入 /shop（会话处于浏览分类步骤）
+	if _, err := svc.handle(context.Background(), "tok", webhookdomain.Update{
+		Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200, UserName: "alice"}, Text: "/shop"},
+	}); err != nil {
+		t.Fatalf("/shop err: %v", err)
+	}
+	// 切换到英文：应以英文重渲当前分类页（不再发送独立确认行）
+	if err := svc.toggleLanguage(context.Background(), "tok", 100, webhookdomain.User{ID: 200, UserName: "alice"}); err != nil {
+		t.Fatalf("toggleLanguage err: %v", err)
+	}
+	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "Select a category") {
+		t.Fatalf("expected re-rendered categories in English, got: %v", last)
 	}
 }
