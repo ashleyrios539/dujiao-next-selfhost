@@ -119,7 +119,7 @@
 
               <div v-else class="bg-secondary border rounded-2xl p-6">
                 <div class="text-sm text-muted-foreground mb-3">{{ t('payment.openPayLink') }}</div>
-                <Button type="button" variant="secondary" class="font-semibold" @click="handleOpenPayLink">
+                <Button type="button" class="font-semibold" @click="handleOpenPayLink">
                   {{ t('payment.openPayLink') }}
                 </Button>
                 <div v-if="openedPayWindow" class="mt-3 text-xs text-success">
@@ -438,7 +438,7 @@
             </div>
 
             <div v-if="showPayLink" class="mt-6 flex flex-col md:flex-row md:items-center gap-3">
-              <Button type="button" variant="secondary" class="font-semibold" @click="handleOpenPayLink">
+              <Button type="button" class="font-semibold" @click="handleOpenPayLink">
                 {{ t('payment.openPayLink') }}
               </Button>
               <Button variant="secondary" @click="handleCopyPayLink">
