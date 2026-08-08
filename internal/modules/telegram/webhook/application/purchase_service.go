@@ -1796,15 +1796,17 @@ func (s *purchaseService) detailKeyboard(ctx context.Context, view *purchaseView
 
 	// 购买类型按钮：挑卡商品显示 8 个，非挑卡商品只显示「立即购买」。
 	if product.PickEnabled {
-		rows = append(rows, s.buyTypeRow(view, pickKindRandom, true))
-		rows = append(rows, s.buyTypeRow(view, pickKindBin, true))
-		// 3头/4头/5头/6头（每行一个，小按钮）+ CREDIT/DEBIT
-		rows = append(rows, s.buyTypeRow(view, pickKindHead3, false))
-		rows = append(rows, s.buyTypeRow(view, pickKindHead4, false))
-		rows = append(rows, s.buyTypeRow(view, pickKindHead5, false))
-		rows = append(rows, s.buyTypeRow(view, pickKindHead6, false))
-		rows = append(rows, s.buyTypeRow(view, pickKindCredit, false))
-		rows = append(rows, s.buyTypeRow(view, pickKindDebit, false))
+		// 大按钮（一行一个）：随机购买、挑头购买。
+		rows = append(rows, []inlineButton{s.buyTypeRow(view, pickKindRandom)})
+		rows = append(rows, []inlineButton{s.buyTypeRow(view, pickKindBin)})
+		// 小按钮（一行两个）：3头/4头、5头/6头、CREDIT/DEBIT。
+		small := []purchaseKind{pickKindHead3, pickKindHead4, pickKindHead5, pickKindHead6, pickKindCredit, pickKindDebit}
+		for i := 0; i+1 < len(small); i += 2 {
+			rows = append(rows, []inlineButton{
+				s.buyTypeRow(view, small[i]),
+				s.buyTypeRow(view, small[i+1]),
+			})
+		}
 	} else {
 		rows = append(rows, []inlineButton{{
 			Text:         "🛒 " + s.t(view, "purchase.buy_now"),
@@ -1911,29 +1913,34 @@ func (s *purchaseService) cardTypeStock(view *purchaseView, cardTypes []string) 
 }
 
 // buyTypeRow 构造单个购买类型按钮行：标签[库存] 毛料价。
-// 挑头购买按钮只显示价格，不显示库存——库存需用户输入 BIN 后才精确，输入后由 handleConfigureText 回显。
-func (s *purchaseService) buyTypeRow(view *purchaseView, k purchaseKind, big bool) []inlineButton {
+// buyTypeRow 构造单个购买类型按钮：标签[库存数字] 毛料价U。
+// 挑头购买按钮只显示价格（无库存），库存留待用户输入 BIN 后回显。
+// 库存括号内只显示数字；价格后缀统一用「U」（站点 USD 收款）。
+func (s *purchaseService) buyTypeRow(view *purchaseView, k purchaseKind) inlineButton {
 	label := s.buyTypeKindLabel(view, k)
 	price := s.buyTypePlainPrice(view, k)
 	if k == pickKindBin {
 		// 挑头：只显示价格，库存留待输入 BIN 后回显。
-		label = fmt.Sprintf("%s %s", label, formatAmount(price, view.currency))
-		return []inlineButton{{
-			Text:         label,
+		return inlineButton{
+			Text:         fmt.Sprintf("%s %s", label, formatButtonAmount(price, view.currency)),
 			CallbackData: cbBuyPrefix + string(k),
-		}}
+		}
 	}
 	stock := s.buyTypeStock(view, k)
-	// 大按钮（随机）显示完整标签+库存+价格；小按钮（3-6头/CREDIT/DEBIT）显示库存+价格。
-	if big {
-		label = fmt.Sprintf("%s [%s%d] %s", label, s.t(view, "purchase.stock_label"), stock, formatAmount(price, view.currency))
-	} else {
-		label = fmt.Sprintf("%s [库存%d] %s", label, stock, formatAmount(price, view.currency))
-	}
-	return []inlineButton{{
-		Text:         label,
+	return inlineButton{
+		Text:         fmt.Sprintf("%s [%d] %s", label, stock, formatButtonAmount(price, view.currency)),
 		CallbackData: cbBuyPrefix + string(k),
-	}}
+	}
+}
+
+// formatButtonAmount 把金额格式化为「数字 U」（站点 USD 收款），购买类型按钮专用，
+// 避免影响 formatAmount 的其它调用方（确认页/支付页仍显示完整币种）。
+func formatButtonAmount(amount, currency string) string {
+	dec, err := decimal.NewFromString(strings.TrimSpace(amount))
+	if err != nil {
+		return strings.TrimSpace(amount) + " U"
+	}
+	return dec.Round(2).StringFixed(2) + " U"
 }
 
 // pickModeKeyboard 挑卡模式选择键盘。

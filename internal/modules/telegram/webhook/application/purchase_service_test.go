@@ -1380,13 +1380,45 @@ func TestPurchaseServiceRenderDetailShowsTwoPriceLinesAndBuyButtons(t *testing.T
 	if binBtn == "" {
 		t.Fatalf("expected 挑头购买 button in keyboard, got: %+v", mk)
 	}
-	if strings.Contains(binBtn, "[可发") || strings.Contains(binBtn, "[库存") {
+	if strings.Contains(binBtn, "[") {
 		t.Fatalf("挑头购买 button must not show stock, got: %s", binBtn)
 	}
-	// 随机购买按钮应显示库存（含库存数量）。
+	// 随机购买按钮库存括号内只显示数字 [100]，价格后缀用 U。
 	randomBtn := findKeyboardButton(mk, "随机购买")
-	if !strings.Contains(randomBtn, "100") {
-		t.Fatalf("随机购买 button should show stock count, got: %s", randomBtn)
+	if !strings.Contains(randomBtn, "[100]") {
+		t.Fatalf("随机购买 button should show stock as [100], got: %s", randomBtn)
+	}
+	if strings.Contains(randomBtn, "可发") || strings.Contains(randomBtn, "库存") {
+		t.Fatalf("随机购买 button stock must be digits only, got: %s", randomBtn)
+	}
+	if !strings.Contains(randomBtn, " U") {
+		t.Fatalf("随机购买 button price should use U suffix, got: %s", randomBtn)
+	}
+	// 大按钮（随机/挑头）各占一行；小按钮（3/4/5/6头、CREDIT/DEBIT）一行两个。
+	rows := mk.InlineKeyboard
+	randomRowIdx := -1
+	for i, row := range rows {
+		if len(row) == 1 && containsStr(row[0].Text, "随机购买") {
+			randomRowIdx = i
+			break
+		}
+	}
+	if randomRowIdx < 0 {
+		t.Fatalf("expected 随机购买 on its own row, got: %+v", rows)
+	}
+	if randomRowIdx+1 >= len(rows) || len(rows[randomRowIdx+1]) != 1 || !containsStr(rows[randomRowIdx+1][0].Text, "挑头购买") {
+		t.Fatalf("expected 挑头购买 on its own row right after 随机购买, got: %+v", rows)
+	}
+	// 后续小按钮行每行 2 个：3头+4头、5头+6头、CREDIT+DEBIT。
+	for i := randomRowIdx + 2; i < len(rows); i++ {
+		row := rows[i]
+		// 排除尾部「返回/取消」导航行（2 个但文本含 🔙/❌）。
+		if containsStr(row[0].Text, "🔙") || containsStr(row[0].Text, "❌") {
+			continue
+		}
+		if len(row) != 2 {
+			t.Fatalf("expected small buy-type rows of 2 buttons, row %d got %d: %+v", i, len(row), row)
+		}
 	}
 }
 
