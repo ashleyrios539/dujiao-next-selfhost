@@ -30,6 +30,7 @@ const (
 	purchaseStepPickCardType    = "pick_card_type"  // 选卡类型（type 模式）
 	purchaseStepPickBin         = "pick_bin"        // 输入 BIN
 	purchaseStepCheckChoice     = "check_choice"    // 测活选择（reply 键盘：毛料/包活）
+	purchaseStepQuantity        = "quantity"        // 输入购买数量（文本输入步骤）
 	purchaseStepConfirm         = "confirm"         // 确认下单
 	purchaseStepPickChannel     = "pick_channel"    // 选择在线支付渠道
 	purchaseStepBinStock        = "bin_stock"       // 卡头库存：输入 BIN
@@ -137,6 +138,7 @@ type purchaseSession struct {
 	selected      *contract.ShopProduct
 	selectedSKUID uint
 	quantity      int
+	quantityDone  bool // 购买数量已由用户确认（避免重复询问）
 	// 挑卡
 	pickMode     contract.PickMode
 	pickKind     purchaseKind // 商品初始页选中的购买类型（random/bin/head3/head4/head5/head6/credit/debit）
@@ -166,6 +168,7 @@ type purchaseView struct {
 	selected      *contract.ShopProduct
 	selectedSKUID uint
 	quantity      int
+	quantityDone  bool // 购买数量已由用户确认（避免重复询问）
 	pickMode     contract.PickMode
 	pickKind     purchaseKind
 	pickCountry  string
@@ -204,6 +207,7 @@ func (s *purchaseService) snapshot(chatID int64) *purchaseView {
 		selected:      sess.selected,
 		selectedSKUID: sess.selectedSKUID,
 		quantity:      sess.quantity,
+		quantityDone:  sess.quantityDone,
 		pickMode:     sess.pickMode,
 		pickKind:     sess.pickKind,
 		pickCountry:  sess.pickCountry,
@@ -312,6 +316,10 @@ func (s *purchaseService) handleMessage(ctx context.Context, token string, msg *
 	// 测活选择（reply 键盘）：识别「毛料/包活」文字
 	if view.step == purchaseStepCheckChoice {
 		return true, s.handleCheckChoice(ctx, token, view, text)
+	}
+	// 购买数量：识别纯整数
+	if view.step == purchaseStepQuantity {
+		return true, s.handleQuantityInput(ctx, token, view, text)
 	}
 	// 配置面板中的文本输入：BIN 或国家双字母
 	if view.step == purchaseStepConfigure || view.step == purchaseStepPickBin ||
@@ -695,6 +703,8 @@ func (s *purchaseService) selectBuyType(ctx context.Context, token string, chatI
 		sess.pickBin = ""
 		sess.cardCheck = false
 		sess.countryPage = 1
+		sess.quantity = 1
+		sess.quantityDone = false // 每次重新选购买类型都重新询问数量
 	}
 	s.mu.Unlock()
 	switch k {
@@ -1061,16 +1071,57 @@ func (s *purchaseService) currentCountryPage(chatID int64) int {
 	return view.countryPage
 }
 
-// enterCheckOrConfirm 测活商品 → 测活选择（reply 键盘）；非测活商品 → 直接确认页。
+// enterCheckOrConfirm 确认前先询问购买数量（文本输入步骤），再走测活选择或确认页。
+// quantityDone 标记本次会话已询问过数量，避免重复询问。
 func (s *purchaseService) enterCheckOrConfirm(ctx context.Context, token string, chatID int64) error {
 	view := s.snapshot(chatID)
 	if view == nil || view.selected == nil {
 		return nil
 	}
+	if !view.quantityDone {
+		return s.sendQuantityPrompt(ctx, token, chatID)
+	}
 	if view.selected.CardCheckEnabled {
 		return s.renderCheckChoice(ctx, token, chatID)
 	}
 	return s.confirmOrder(ctx, token, chatID)
+}
+
+// sendQuantityPrompt 发送「请输入购买数量：」并等待用户回复数字。
+func (s *purchaseService) sendQuantityPrompt(ctx context.Context, token string, chatID int64) error {
+	view := s.snapshot(chatID)
+	loc := "zh-CN"
+	if view != nil {
+		loc = view.locale
+	}
+	s.mu.Lock()
+	if sess := s.sessions[chatID]; sess != nil {
+		sess.step = purchaseStepQuantity
+	}
+	s.mu.Unlock()
+	markup := inlineKeyboard{InlineKeyboard: [][]inlineButton{{
+		{Text: "❌ " + localizedText(purchaseTexts["purchase.cancel"], loc), CallbackData: cbCancel},
+	}}}
+	return s.botapi.SendMessage(ctx, token, fmt.Sprintf("%d", chatID), localizedText(purchaseTexts["purchase.quantity_prompt"], loc),
+		contract.SendMessageOptions{DisableWebPagePreview: true, ReplyMarkup: markup})
+}
+
+// handleQuantityInput 处理购买数量的文本输入：纯整数 ≥1 写入会话并继续测活/确认；否则提示重输。
+func (s *purchaseService) handleQuantityInput(ctx context.Context, token string, view *purchaseView, text string) error {
+	if view == nil || view.selected == nil {
+		return nil
+	}
+	qty, err := strconv.Atoi(strings.TrimSpace(text))
+	if err != nil || qty < 1 {
+		return s.sendError(ctx, token, view.chatID, nil, "purchase.quantity_invalid")
+	}
+	s.mu.Lock()
+	if sess := s.sessions[view.chatID]; sess != nil {
+		sess.quantity = qty
+		sess.quantityDone = true
+	}
+	s.mu.Unlock()
+	return s.enterCheckOrConfirm(ctx, token, view.chatID)
 }
 
 // renderCheckChoice 渲染测活选择：reply 键盘 [毛料] [包活]。
@@ -1787,14 +1838,8 @@ func (s *purchaseService) detailKeyboard(ctx context.Context, view *purchaseView
 		rows = append(rows, row)
 	}
 
-	// 数量
-	rows = append(rows, []inlineButton{
-		{Text: "−", CallbackData: cbQtyPrefix + fmt.Sprintf("%d", max(1, view.quantity-1))},
-		{Text: fmt.Sprintf("%d", view.quantity), CallbackData: cbHelpBuy},
-		{Text: "+", CallbackData: cbQtyPrefix + fmt.Sprintf("%d", view.quantity+1)},
-	})
-
 	// 购买类型按钮：挑卡商品显示 8 个，非挑卡商品只显示「立即购买」。
+	// 数量不在此处交互——改为确认前由 bot 发「请输入购买数量：」询问、用户回复数字。
 	if product.PickEnabled {
 		// 大按钮（一行一个）：随机购买、挑头购买。
 		rows = append(rows, []inlineButton{s.buyTypeRow(view, pickKindRandom)})
@@ -2225,6 +2270,8 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.current":         {"zh-CN": "当前选择", "zh-TW": "目前選擇", "en-US": "Current"},
 	"purchase.sku":             {"zh-CN": "规格", "zh-TW": "規格", "en-US": "SKU"},
 	"purchase.quantity":        {"zh-CN": "数量", "zh-TW": "數量", "en-US": "Qty"},
+	"purchase.quantity_prompt": {"zh-CN": "请输入购买数量：", "zh-TW": "請輸入購買數量：", "en-US": "Please enter quantity:"},
+	"purchase.quantity_invalid": {"zh-CN": "请输入有效的数量（≥1 的整数）。", "zh-TW": "請輸入有效的數量（≥1 的整數）。", "en-US": "Please enter a valid quantity (integer ≥ 1)."},
 	"purchase.not_selected":    {"zh-CN": "未选择", "zh-TW": "未選擇", "en-US": "not selected"},
 	"purchase.country":         {"zh-CN": "国家", "zh-TW": "國家", "en-US": "Country"},
 	"purchase.brand":           {"zh-CN": "品牌", "zh-TW": "品牌", "en-US": "Brand"},
@@ -2612,6 +2659,8 @@ func (s *purchaseService) renderCurrentStep(ctx context.Context, token string, c
 		return s.renderPickCountry(ctx, token, chatID, s.currentCountryPage(chatID))
 	case purchaseStepCheckChoice:
 		return s.renderCheckChoice(ctx, token, chatID)
+	case purchaseStepQuantity:
+		return s.sendQuantityPrompt(ctx, token, chatID)
 	case purchaseStepPickBrand:
 		return s.renderPickBrand(ctx, token, chatID)
 	case purchaseStepPickCardType:

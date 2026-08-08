@@ -1437,10 +1437,17 @@ func TestPurchaseServiceBuyTypeRandomToCountryThenConfirm(t *testing.T) {
 	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "3", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbBuyPrefix + "random"}})
 	// 选国家 US
 	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "4", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCountryPrefix + "US"}})
-	// 非测活商品：选国家后直接进确认页
+	// 选完国家后询问购买数量
 	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "请输入购买数量：") {
+		t.Fatalf("expected quantity prompt after country, got: %s", last)
+	}
+	// 发送数量 1
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "1"}})
+	// 非测活商品：输入数量后直接进确认页
+	last = bot.sent[len(bot.sent)-1]
 	if !containsStr(last, "订单确认") {
-		t.Fatalf("expected confirm page after country for non-cardcheck product, got: %s", last)
+		t.Fatalf("expected confirm page after quantity for non-cardcheck product, got: %s", last)
 	}
 }
 
@@ -1457,10 +1464,12 @@ func TestPurchaseServiceBuyTypeRandomToCountryThenCheckChoiceReplyKeyboard(t *te
 	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "2", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbProdPrefix + "dx"}})
 	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "3", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbBuyPrefix + "random"}})
 	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "4", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCountryPrefix + "US"}})
-	// 测活商品：应进入测活选择，文本含「请选择是否测活」
+	// 选完国家后询问购买数量，发送数量 1
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "1"}})
+	// 测活商品：输入数量后应进入测活选择，文本含「请选择是否测活」
 	last := bot.sent[len(bot.sent)-1]
 	if !containsStr(last, "请选择是否测活") {
-		t.Fatalf("expected check-choice prompt, got: %s", last)
+		t.Fatalf("expected check-choice prompt after quantity, got: %s", last)
 	}
 	// 应回 reply 键盘（毛料/包活），非 inline。
 	if len(bot.replyMarkups) == 0 {
@@ -1504,6 +1513,82 @@ func TestPurchaseServiceBuyTypeBinEntersBinInput(t *testing.T) {
 	last := bot.sent[len(bot.sent)-1]
 	if !containsStr(last, "请直接输入 6 位 BIN") {
 		t.Fatalf("expected BIN input prompt after 挑头购买, got: %s", last)
+	}
+}
+
+// TestPurchaseServiceQuantityStepPromptAndInput 验证确认前的数量输入步骤：
+// 选完国家后 bot 发「请输入购买数量：」，用户发数字后进入测活/确认；非数字提示重输。
+func TestPurchaseServiceQuantityStepPromptAndInput(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newBuyFlowService(t, bot, false) // 非测活：输数量后直接确认
+	handle := func(u webhookdomain.Update) {
+		if _, err := svc.handle(context.Background(), "tok", u); err != nil {
+			t.Fatalf("handle err: %v", err)
+		}
+	}
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "/shop"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "1", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCatPrefix + "1"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "2", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbProdPrefix + "dx"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "3", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbBuyPrefix + "random"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "4", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCountryPrefix + "US"}})
+
+	// 选完国家后应发数量询问
+	last := bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "请输入购买数量：") {
+		t.Fatalf("expected quantity prompt, got: %s", last)
+	}
+	// 数量提示带 ❌取消按钮
+	mk := bot.markups[len(bot.markups)-1]
+	if !keyboardContains(mk, "取消") {
+		t.Fatalf("expected cancel button on quantity prompt, got: %+v", mk)
+	}
+	// 非数字 → 提示重输，不进确认
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "abc"}})
+	last = bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "请输入有效的数量") {
+		t.Fatalf("expected invalid-quantity hint, got: %s", last)
+	}
+	// 0 → 提示重输
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "0"}})
+	if !containsStr(bot.sent[len(bot.sent)-1], "请输入有效的数量") {
+		t.Fatalf("expected invalid hint for 0, got: %s", bot.sent[len(bot.sent)-1])
+	}
+	// 有效数字 → 进确认页（非测活）
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "3"}})
+	last = bot.sent[len(bot.sent)-1]
+	if !containsStr(last, "订单确认") {
+		t.Fatalf("expected confirm page after valid quantity, got: %s", last)
+	}
+	// 会话数量应已写入 3（确认页数量来自 preview stub，但会话记录是真实值，下单时用）
+	svc.mu.Lock()
+	qty := 0
+	if sess := svc.sessions[100]; sess != nil {
+		qty = sess.quantity
+	}
+	svc.mu.Unlock()
+	if qty != 3 {
+		t.Fatalf("expected session quantity=3 after input, got %d", qty)
+	}
+}
+
+// TestPurchaseServiceQuantityStepEscapeByCancel 验证数量步骤可 /cancel 退出。
+func TestPurchaseServiceQuantityStepEscapeByCancel(t *testing.T) {
+	bot := &fakeBotAPI{}
+	svc := newBuyFlowService(t, bot, false)
+	handle := func(u webhookdomain.Update) {
+		if _, err := svc.handle(context.Background(), "tok", u); err != nil {
+			t.Fatalf("handle err: %v", err)
+		}
+	}
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "/shop"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "1", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCatPrefix + "1"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "2", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbProdPrefix + "dx"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "3", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbBuyPrefix + "random"}})
+	handle(webhookdomain.Update{CallbackQuery: &webhookdomain.CallbackQuery{ID: "4", Message: webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100}}, Data: cbCountryPrefix + "US"}})
+	// 在数量步骤发 /cancel → 会话清空
+	handle(webhookdomain.Update{Message: &webhookdomain.Message{Chat: webhookdomain.Chat{ID: 100, Type: "private"}, From: &webhookdomain.User{ID: 200}, Text: "/cancel"}})
+	if svc.snapshot(100) != nil {
+		t.Fatalf("expected session cleared after /cancel in quantity step")
 	}
 }
 
