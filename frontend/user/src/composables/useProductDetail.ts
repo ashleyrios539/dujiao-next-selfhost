@@ -73,7 +73,7 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
   const purchaseWarning = ref('')
 
   const pickCountry = ref('')
-  const pickBrands = ref<string[]>([])
+  const pickHead = ref<string>('') // 首位挑卡：卡号首位 "3"/"4"/"5"/"6"（与「挑卡种类」模式配合）
   const pickCardTypes = ref<string[]>([])
   const pickStockItems = ref<any[]>([])
   const pickCountries = ref<any[]>([])
@@ -83,18 +83,20 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
   const pickBin = ref('')
   const binStockCount = ref<number | null>(null)
   const binStockLoading = ref(false)
+  const headStockCount = ref<number | null>(null)
+  const headStockLoading = ref(false)
   const countrySearch = ref('')
   const countryDropdownOpen = ref(false)
 
   const PICK_RANDOM = 'random'
 
-  const pickBrandOptions = [
-    { value: 'random', label: t('productDetail.pickBrandRandom') },
-    { value: 'visa', label: 'Visa' },
-    { value: 'mastercard', label: 'Mastercard' },
-    { value: 'discover', label: 'Discover' },
-    { value: 'amex', label: 'AMEX' },
-    { value: 'jcb', label: 'JCB' },
+  // 首位挑卡：3头/4头/5头/6头 = 卡号首位 3/4/5/6，与 bot「N头」按钮一致；后端按 1 位 BIN(LIKE 'N%') 匹配。
+  const pickHeadOptions = [
+    { value: 'random', label: t('productDetail.pickHeadRandom') },
+    { value: '3', label: t('productDetail.pickHead3') },
+    { value: '4', label: t('productDetail.pickHead4') },
+    { value: '5', label: t('productDetail.pickHead5') },
+    { value: '6', label: t('productDetail.pickHead6') },
   ]
 
   // 卡种类合并为 DEBIT（D+PD，提交 D）与 CREDIT（C，提交 C）两类。
@@ -105,8 +107,8 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
   ]
 
   // 单选切换：点已选中项取消，点其他项替换。
-  const togglePickBrand = (value: string) => {
-    pickBrands.value = pickBrands.value[0] === value ? [] : [value]
+  const togglePickHead = (value: string) => {
+    pickHead.value = pickHead.value === value ? '' : value
   }
 
   const togglePickType = (value: string) => {
@@ -349,10 +351,15 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     if (limit === null) return false
     return limit < quantityEffectiveMin.value
   })
-  // 品牌与卡种类都为「随机」时，等价于随机购买（不挑品牌也不挑种类），
+  // 首位与卡种类都为「随机」时，等价于随机购买（不挑首位也不挑种类），
   // 禁止在“挑卡种类”模式下下单，引导用户切换到“随机购买”模式。
   const isPickBothRandom = computed(() =>
-    pickBrands.value.includes(PICK_RANDOM) && pickCardTypes.value.includes(PICK_RANDOM)
+    pickHead.value === PICK_RANDOM && pickCardTypes.value.includes(PICK_RANDOM)
+  )
+
+  const pickHeadSelected = computed(() => Boolean(pickHead.value) && pickHead.value !== PICK_RANDOM)
+  const pickTypeSelected = computed(() =>
+    pickCardTypes.value.length > 0 && pickCardTypes.value[0] !== PICK_RANDOM
   )
 
   const canPurchase = computed(() => {
@@ -372,7 +379,7 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
         if (!pickCountry.value) return false
         if (pickMode.value === 'type') {
           if (isPickBothRandom.value) return false
-          if (pickBrands.value.length === 0 && pickCardTypes.value.length === 0) return false
+          if (!pickHeadSelected.value && !pickTypeSelected.value) return false
         }
         if (pickAvailableCount.value < quantity.value) return false
       }
@@ -393,7 +400,7 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
         if (!pickCountry.value) return t('productDetail.pickCountryRequired')
         if (pickMode.value === 'type') {
           if (isPickBothRandom.value) return t('productDetail.pickBothRandomGuide')
-          if (pickBrands.value.length === 0 && pickCardTypes.value.length === 0) return t('productDetail.pickTypeRequired')
+          if (!pickHeadSelected.value && !pickTypeSelected.value) return t('productDetail.pickTypeRequired')
         }
         if (pickAvailableCount.value < quantity.value) return t('productDetail.pickStockInsufficient', { count: pickAvailableCount.value })
       }
@@ -488,9 +495,13 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     cardCheckFee: String(product.value?.card_check_fee || '0'),
     pickSurcharge: pickEnabled.value ? pickUnitSurcharge.value : 0,
     pickCountry: pickEnabled.value ? pickCountry.value : '',
-    pickBrands: pickEnabled.value ? pickBrands.value.filter((b) => b !== PICK_RANDOM) : [],
+    pickBrands: [], // 首位挑卡取代品牌维度，恒空（后端库存匹配 brand IN ? 仅当非空时生效）
     pickCardTypes: pickEnabled.value ? pickCardTypes.value.filter((t) => t !== PICK_RANDOM) : [],
-    pickBin: pickEnabled.value ? pickBin.value : '',
+    // 挑卡种类模式选了首位时提交 1 位 pickBin（后端按 LIKE 'N%' 匹配 + head<N> 加价）；
+    // 挑头模式提交 6 位 pickBin。
+    pickBin: pickEnabled.value
+      ? (pickMode.value === 'type' && pickHead.value && pickHead.value !== PICK_RANDOM ? pickHead.value : pickBin.value)
+      : '',
     quantity: quantity.value,
   })
 
@@ -788,9 +799,9 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     if (!pickCountry.value) return 0
     const skuId = normalizeSkuId(selectedSku.value?.id)
     // 「随机」视为不限：跳过该维度筛选
-    const brandFilter = pickBrands.value.filter((b) => b !== PICK_RANDOM)
     const typeFilter = pickCardTypes.value.filter((t) => t !== PICK_RANDOM)
     // D（含预付）是超集：匹配 D 与纯 D（PD）。
+    // 首位维度不在此过滤——首位库存单独展示（pickHeadAvailable，全商品不分国家，与 bot 一致）。
     const typeMatches = (cardType: string) => {
       if (typeFilter.length === 0) return true
       return typeFilter.some((t) => t === cardType || (t === 'D' && cardType === 'PD'))
@@ -799,7 +810,6 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     for (const item of pickStockItems.value) {
       if (String(item.country || '') !== pickCountry.value) continue
       if (skuId > 0 && normalizeSkuId(item.sku_id) !== skuId) continue
-      if (brandFilter.length > 0 && !brandFilter.includes(String(item.brand || ''))) continue
       if (!typeMatches(String(item.card_type || ''))) continue
       total += Number(item.total || 0)
     }
@@ -820,7 +830,10 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
       // 挑头（BIN）模式：加价独立配置在 pick_prices["bin"]。
       return Number((maxBy(['bin']) + 0).toFixed(2))
     }
-    return Number((maxBy(pickBrands.value) + maxBy(pickCardTypes.value)).toFixed(2))
+    // 挑卡种类模式：首位维度取代品牌维度，加价取 pick_prices["head<N>"]；种类仍取 D/C。
+    const headKey = pickHead.value && pickHead.value !== PICK_RANDOM ? 'head' + pickHead.value : null
+    const headSurcharge = headKey ? maxBy([headKey]) : 0
+    return Number((headSurcharge + maxBy(pickCardTypes.value)).toFixed(2))
   })
 
   const pickUnitPrice = computed<number>(() => cardCheckPlainPrice.value + pickUnitSurcharge.value)
@@ -831,16 +844,16 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
   const finalCheckedPrice = computed<number>(() => finalPlainPrice.value + cardCheckFeeAmount.value)
 
   const pickSelectionSummary = computed(() => {
-    if (!pickCountry.value && !pickBin.value) return ''
+    if (!pickCountry.value && !pickBin.value && !pickHead.value) return ''
     const parts: string[] = []
     if (pickBin.value) {
       parts.push(`BIN ${pickBin.value}`)
     } else {
       const country = availableCountries.value.find((c) => String(c.code) === pickCountry.value)
       parts.push(country ? `${country.name} ${country.code}` : pickCountry.value)
-      if (pickBrands.value.length) {
-        const labels = pickBrands.value.map((b) => pickBrandOptions.find((o) => o.value === b)?.label || b)
-        parts.push(labels.join('、'))
+      if (pickHead.value && pickHead.value !== PICK_RANDOM) {
+        const opt = pickHeadOptions.find((o) => o.value === pickHead.value)
+        parts.push(opt ? opt.label : `${pickHead.value}头`)
       }
       if (pickCardTypes.value.length) {
         const labels = pickCardTypes.value.map((ty) => pickTypeOptions.find((o) => o.value === ty)?.label || ty)
@@ -854,10 +867,11 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     if (pickMode.value === mode) return
     pickMode.value = mode
     pickCountry.value = ''
-    pickBrands.value = []
+    pickHead.value = ''
     pickCardTypes.value = []
     pickBin.value = ''
     binStockCount.value = null
+    headStockCount.value = null
     countrySearch.value = ''
   }
 
@@ -911,13 +925,40 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     if (pickMode.value === 'bin') checkBinStock()
   })
 
+  // 首位挑卡库存：选了具体首位（1 位数字）时，复用 pick-stock?bin=<首位> 取全商品该首位库存
+  // （不分国家，与 bot headStock 行为一致）；实际下单再由后端按首位+国家 LIKE 匹配精确发货。
+  let headDebounceTimer: ReturnType<typeof setTimeout> | null = null
+  const checkHeadStock = async () => {
+    if (headDebounceTimer) clearTimeout(headDebounceTimer)
+    if (!pickEnabled.value || !pickHead.value || pickHead.value === PICK_RANDOM || pickHead.value.length !== 1) {
+      headStockCount.value = null
+      return
+    }
+    headDebounceTimer = setTimeout(async () => {
+      headStockLoading.value = true
+      try {
+        const response = await productAPI.pickStock(product.value.slug, pickHead.value)
+        headStockCount.value = Number(response.data.data?.bin_total ?? 0)
+      } catch {
+        headStockCount.value = 0
+      } finally {
+        headStockLoading.value = false
+      }
+    }, 300)
+  }
+
+  watch(pickHead, () => {
+    if (pickMode.value === 'type') checkHeadStock()
+  })
+
   const resetPickSelection = () => {
     pickMode.value = ''
     pickCountry.value = ''
-    pickBrands.value = []
+    pickHead.value = ''
     pickCardTypes.value = []
     pickBin.value = ''
     binStockCount.value = null
+    headStockCount.value = null
     countrySearch.value = ''
     countryDropdownOpen.value = false
   }
@@ -942,10 +983,10 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     cardCheckEnabled, cardCheckFeeAmount, cardCheckPlainPrice, cardCheckCheckedPrice,
     finalPlainPrice, finalCheckedPrice,
     // 挑卡
-    pickEnabled, pickCountry, pickBrands, pickCardTypes, pickStockLoading,
-    pickBrandOptions, pickTypeOptions, togglePickBrand, togglePickType, pickSelectionSummary,
+    pickEnabled, pickCountry, pickHead, pickCardTypes, pickStockLoading,
+    pickHeadOptions, pickTypeOptions, togglePickHead, togglePickType, pickSelectionSummary,
     isPickBothRandom,
-    pickMode, pickBin, binStockCount, binStockLoading, selectPickMode,
+    pickMode, pickBin, binStockCount, binStockLoading, headStockCount, headStockLoading, selectPickMode,
     countrySearch, countryDropdownOpen, selectCountry, onCountryBlur, filteredCountries, selectedCountryName,
     availableCountries, pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
     resetPickSelection,

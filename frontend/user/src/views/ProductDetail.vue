@@ -364,22 +364,29 @@
                     </p>
                   </div>
 
-                  <!-- 挑卡种类：品牌 + 种类单选 chips -->
+                  <!-- 挑卡种类：首位 + 种类单选 chips -->
                   <template v-if="pickMode === 'type'">
                     <div>
-                      <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickBrandLabel') }}</label>
+                      <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickHeadLabel') }}</label>
                       <div class="flex flex-wrap gap-2">
                         <button
-                          v-for="brand in pickBrandOptions"
-                          :key="brand.value"
+                          v-for="head in pickHeadOptions"
+                          :key="head.value"
                           type="button"
                           class="rounded-full border px-4 py-1.5 text-sm font-medium transition-all"
-                          :class="pickBrands[0] === brand.value
+                          :class="pickHead === head.value
                             ? 'border-primary/40 bg-primary/10 text-primary ring-1 ring-primary/30'
                             : 'border bg-secondary text-foreground hover:border-primary/30 hover:-translate-y-0.5'"
-                          @click="togglePickBrand(brand.value)"
-                        >{{ brand.label }}</button>
+                          @click="togglePickHead(head.value)"
+                        >{{ head.label }}</button>
                       </div>
+                      <p v-if="headStockLoading" class="mt-1.5 text-xs text-muted-foreground">{{ t('productDetail.pickStockLoading') }}</p>
+                      <p v-else-if="pickHead && pickHead !== 'random' && (headStockCount ?? 0) === 0" class="mt-1.5 text-xs text-destructive">
+                        {{ t('productDetail.pickHeadAvailable', { count: headStockCount ?? 0 }) }}
+                      </p>
+                      <p v-else-if="pickHead && pickHead !== 'random'" class="mt-1.5 text-xs text-emerald-600">
+                        {{ t('productDetail.pickHeadAvailable', { count: headStockCount ?? 0 }) }}
+                      </p>
                     </div>
                     <div>
                       <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickTypeLabel') }}</label>
@@ -405,7 +412,7 @@
                       class="mt-1.5 rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary transition-all hover:bg-primary/20"
                       @click="selectPickMode('random')"
                     >{{ t('productDetail.pickBothRandomGo') }}</button>
-                    <p v-else-if="pickCountry && pickBrands.length === 0 && pickCardTypes.length === 0" class="text-xs text-amber-500">
+                    <p v-else-if="pickCountry && !pickHead && !pickCardTypes.length" class="text-xs text-amber-500">
                       {{ t('productDetail.pickTypeRequired') }}
                     </p>
                   </template>
@@ -619,10 +626,10 @@ const {
   loading, product, relatedPosts, currentImage, selectedSkuId, quantity, purchaseWarning,
   activeSkus, selectedSku,
   cardCheckEnabled, finalPlainPrice, finalCheckedPrice,
-  pickEnabled, pickCountry, pickBrands, pickCardTypes, pickStockLoading,
-  pickBrandOptions, pickTypeOptions, togglePickBrand, togglePickType, pickSelectionSummary,
+  pickEnabled, pickCountry, pickHead, pickCardTypes, pickStockLoading,
+  pickHeadOptions, pickTypeOptions, togglePickHead, togglePickType, pickSelectionSummary,
   isPickBothRandom,
-  pickMode, pickBin, binStockCount, binStockLoading, selectPickMode,
+  pickMode, pickBin, binStockCount, binStockLoading, headStockCount, headStockLoading, selectPickMode,
   countrySearch, countryDropdownOpen, selectCountry, onCountryBlur, filteredCountries, selectedCountryName,
   pickAvailableCount, pickUnitSurcharge,
   selectedSkuMemberPrice, hasMemberPrice,

@@ -329,3 +329,48 @@ func TestBuildOrderResultPickBinHeadSurcharge(t *testing.T) {
 		t.Fatalf("expected unit price 13.00, got %s", got)
 	}
 }
+
+// TestBuildOrderResultPickHeadAndCardTypeSurcharge 验证网页端「挑卡种类」模式提交
+// 首位(PickBin=1位)+国家+种类(PickCardTypes) 的组合加价：head4 3.00 + D 0.50 = base 10.00 + 3.50 = 13.50。
+// 这正是网页端 useProductDetail 在 type 模式选中首位与 DEBIT 时的提交结构。
+func TestBuildOrderResultPickHeadAndCardTypeSurcharge(t *testing.T) {
+	svc, product, sku := buildPickPricingOrderService(t)
+	result, err := svc.buildOrderResult(orderCreateParams{
+		UserID: 1,
+		Items: []CreateOrderItem{
+			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickBin: "4", PickCountry: "US", PickCardTypes: []string{"D"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildOrderResult: %v", err)
+	}
+	item := result.Plans[0].Item
+	// base 10.00 + head4 3.00 + D 0.50 = 13.50
+	if got := item.UnitPrice.String(); got != "13.50" {
+		t.Fatalf("expected unit price 13.50 (head4 + D), got %s", got)
+	}
+	if item.PickBin != "4" {
+		t.Fatalf("expected pick_bin 4, got %q", item.PickBin)
+	}
+	if item.PickCountry != "US" {
+		t.Fatalf("expected pick_country US, got %q", item.PickCountry)
+	}
+}
+
+// TestBuildOrderResultPickHeadWithEmptyBrandsValid 验证首位挑卡提交空品牌列表
+// 不报错（网页端 buildItemPayload 恒提交 pickBrands=[]），防止后端回归要求品牌。
+func TestBuildOrderResultPickHeadWithEmptyBrandsValid(t *testing.T) {
+	svc, product, sku := buildPickPricingOrderService(t)
+	result, err := svc.buildOrderResult(orderCreateParams{
+		UserID: 1,
+		Items: []CreateOrderItem{
+			{ProductID: product.ID, SKUID: sku.ID, Quantity: 1, PickBin: "4", PickCountry: "US", PickBrands: []string{}, PickCardTypes: []string{}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildOrderResult with empty brands: %v", err)
+	}
+	if result.Plans[0].Item.PickBin != "4" {
+		t.Fatalf("expected pick_bin 4, got %q", result.Plans[0].Item.PickBin)
+	}
+}

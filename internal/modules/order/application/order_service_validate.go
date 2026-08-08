@@ -151,10 +151,15 @@ func (s *OrderService) buildOrderResult(input orderCreateParams) (*orderBuildRes
 			}
 		}
 		// 挑头（BIN）模式：加价独立配置在 pick_prices["bin"]，与其他品牌/种类加价互不影响。
-		// 首位挑卡（1 位 BIN）按首位取对应 head3/head4/head5/head6 加价。
+		// 首位挑卡（1 位 BIN）按首位取 head3/head4/head5/head6 加价；网页端「挑卡种类」模式
+		// 可同时选首位与 DEBIT/CREDIT，此时首位加价与种类加价一并叠加。
 		var pickSurcharge decimal.Decimal
 		if pickBin != "" {
-			pickSurcharge = productdomain.PickUnitSurcharge(product.PickPrices, []string{pickBinSurchargeKey(pickBin)}, nil)
+			cardTypes := pickCardTypes
+			if len(pickBin) == 6 {
+				cardTypes = nil // 6 位挑头精确匹配，不叠加种类加价（与挑头购买模式语义一致）
+			}
+			pickSurcharge = productdomain.PickUnitSurcharge(product.PickPrices, []string{pickBinSurchargeKey(pickBin)}, cardTypes)
 		} else {
 			pickSurcharge = productdomain.PickUnitSurcharge(product.PickPrices, pickBrands, pickCardTypes)
 		}

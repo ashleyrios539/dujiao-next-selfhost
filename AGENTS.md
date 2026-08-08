@@ -118,6 +118,18 @@ reseller:
 
 要点：DEBIT 提交 `PickCardTypes=["D"]`（库存匹配 D+PD）、CREDIT 提交 `["C"]`，加价分别取 `pick_prices["D"]`/`["C"]`——**管理端/后端无需为 DEBIT 改动**（复用 D 项）。首位挑卡走 BIN 路径：`PickBin=首位`(1位) + `PickCountry=国家`，后端按位数 LIKE 匹配、按首位取 `headN` 加价。`pickMode` 旧流程（type 模式选品牌/卡类型）保留兼容（`pickKind` 为空时回退）。测活选择用 reply 键盘（输入框弹出，点一下发文字），选择后发 `replyKeyboardRemove` 移除并进确认页。无需 GORM 迁移：`PickBin varchar(6)` 可存1位或6位，`PickPrices` 是 `jsonmap.JSON` 新 key 自动保留。
 
+### 网页端首位挑卡 + 管理端删品牌加价（本分支后续新增）
+
+背景：bot 端早已有「3/4/5/6头」首位挑卡，但网页端「挑卡种类」模式仍是品牌 chips（visa/mastercard/discover/amex/jcb）；管理端「挑卡加价」还保留已废弃的品牌加价框。本次让网页端与 bot 对齐首位维度，并清理管理端品牌加价。
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| 网页端首位挑卡 | `frontend/user/src/composables/useProductDetail.ts` + `views/ProductDetail.vue` + `templates/vault/ProductDetail.vue` + `i18n/locales/*.json` | 「挑卡种类」模式品牌 chips 替换为首位 chips(3/4/5/6头)；提交 `pickBin=首位`(1位) + `pickCountry` + `pickCardTypes`，`pickBrands` 恒空；加价取 `pick_prices["head<N>"]` + 种类 max；首位库存复用 `pick-stock?bin=<digit>`（全商品，与 bot 一致），不新增后端接口 |
+| 管理端删品牌加价 | `frontend/admin/src/views/admin/components/ProductEditModal.vue` + `i18n/index.ts` | `pickPriceKeys` 去 visa/mastercard/discover/amex/jcb（13→8）；后端常量 `PickPriceKeyVisa` 等、`pickPriceKeys` 列表、`ValidPickBrand` 全部保留（兼容旧 bot type 流程与既有数据），仅前端隐藏输入 |
+| 后端首位+种类叠加加价 | `internal/modules/order/application/order_service_validate.go` | 1 位首位 BIN 与种类同时提交时叠加加价（`PickUnitSurcharge(prices, [headKey], cardTypes)`）；6 位 BIN 仍不叠加（挑头语义） |
+
+要点：**后端仅改 1 处加价叠加逻辑**，其余后端（validPickBin/buildPickQuery/PickPriceKeyHead/库存接口）早已就绪。前端无单测，靠 `pnpm run build`（vue-tsc）验证两模板解构与 composable 返回对象一致。新增测试：`TestBuildOrderResultPickHeadAndCardTypeSurcharge`（head4+D=13.50）、`TestBuildOrderResultPickHeadWithEmptyBrandsValid`（空品牌合法）。
+
 ### 架构约束（必须遵守，改代码会触发失败）
 
 - **文件预算**：`internal/architecture/reseller_vertical_slice_test.go` 限制每个包的文件数
@@ -212,14 +224,15 @@ reseller:
 | 交付过滤 | `internal/modules/fulfillment/application/check.go` + `service.go` | 测活 pool 与未测活直取均按挑卡快照过滤 |
 | 挑卡库存接口 | `internal/modules/catalog/product/transport/http/public_handler.go` | `GET /public/products/:slug/pick-stock`（SKU/国家/品牌/种类聚合 + 国家字典） |
 | 国家字典 | `internal/shared/countries/` | ISO 3166-1 alpha-2 → 中文名静态表 |
-| 前端 | `frontend/user/src/composables/useProductDetail.ts`、`views/ProductDetail.vue`、`templates/vault/ProductDetail.vue`、`stores/cart.ts`、`composables/useCheckout.ts` | 国家必选 + 品牌/种类挑卡 + 实时可发数 + 加价展示 + 快照携带 |
-| 管理端 | `frontend/admin/src/views/admin/CardBins.vue`、`CardSecrets.vue`、`components/ProductEditModal.vue` | BIN 库上传/列映射/种类规则、卡密属性列与过滤、商品挑卡加价表 |
+| 前端 | `frontend/user/src/composables/useProductDetail.ts`、`views/ProductDetail.vue`、`templates/vault/ProductDetail.vue`、`stores/cart.ts`、`composables/useCheckout.ts` | 国家必选 + 首位/种类挑卡（挑卡种类模式：3/4/5/6头 chips + DEBIT/CREDIT chips）+ 实时可发数 + 加价展示 + 快照携带 |
+| 管理端 | `frontend/admin/src/views/admin/CardBins.vue`、`CardSecrets.vue`、`components/ProductEditModal.vue` | BIN 库上传/列映射/种类规则、卡密属性列与过滤、商品挑卡加价表（`pickPriceKeys = bin,head3-6,D,PD,C`） |
 
 ### 挑卡关键约定
 - 卡密属性来源：**BIN 库**（上传 CSV → `card_bins` 表），导入卡密时取卡号前 6 位自动标注国家/品牌/种类；未命中属性留空，仅作普通卡售卖。
 - 品牌归一化：`VISA→visa`、`MASTERCARD/MC→mastercard`、`DISCOVER→discover`、其余（含空）→`other`。
 - 种类三值：`D`（含预付）、`PD`（纯D不含预付）、`C`（纯C）。判定逻辑：`Type` 列命中显式映射（默认 `CREDIT/CHARGE→C`）直接得 `C`；其余非信用卡按「预付标记列」（默认 `Category`）是否命中 `PREPAID` 区分——命中 → `D`（含预付），未命中 → `PD`（纯D）。
-- 挑卡加价：商品级属性单价表（visa/mastercard/discover/other/D/PD/C），同一属性组（品牌/种类）多选时只按该组**最高单价**计一次，并入商品单价参与优惠计算。
+- 挑卡加价：商品级属性单价表（`bin`/`head3`/`head4`/`head5`/`head6`/`D`/`PD`/`C`），同一属性组（首位/种类）多选时只按该组**最高单价**计一次，并入商品单价参与优惠计算。品牌加价（visa/mastercard/discover/amex/jcb）后端常量保留兼容但管理端不再配置；网页端「挑卡种类」模式用首位 chips 取代品牌 chips。
+- 首位挑卡（3/4/5/6头=卡号首位）：提交 `PickBin=首位`(1位) + `PickCountry`，后端按 `bin_prefix LIKE 'N%'` 匹配、按 `head<N>` 取加价；1 位首位可与国家共存（交集过滤），6 位 BIN 与国家互斥。网页端 type 模式可同时选首位与 DEBIT/CREDIT，加价叠加（`head<N>` + `D`/`C`）；bot 端 8 按钮互斥（选了 N 头不再选种类），不触发叠加。首位库存展示为全商品总量（不分国家，与 bot 一致），精确「首位+国家」库存由后端下单/履约时保证。
 - 下单校验：商品开启挑卡时**国家必选**、格式两位大写；品牌/种类值合法；预留库存不足直接 `ErrCardSecretInsufficient` 无法下单。
 | 商品字段 | `internal/modules/catalog/product/domain/product.go` | `CardCheckEnabled`（支持测活）、`CardCheckFee`（测活价格） |
 | 测活全局设置 | `internal/modules/settings/schema/integration/cardcheck.go` | `card_check_config`：enabled/kami/interface/buffer（缓冲**比例** %）/timeout/poll；管理后台「设置 → 测活设置」页（`frontend/admin/src/views/admin/components/SettingsCardCheckTab.vue`）编辑 |
