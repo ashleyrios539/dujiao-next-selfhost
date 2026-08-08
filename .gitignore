@@ -3,6 +3,7 @@ config.yml
 .idea
 db
 uploads
+data/
 *.db
 *.log
 .env

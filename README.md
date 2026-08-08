@@ -41,6 +41,9 @@ application: the Go backend, the customer storefront, and the admin panel.
 │   └── user/                 # customer storefront SPA (dev :5173)
 ├── config.yml.example
 ├── Dockerfile                # single full-stack image
+├── docker-compose.yml        # 一键自部署：app + redis
+├── .env.example              # 环境变量模板（.env 由 setup.sh 生成，不入库）
+├── setup.sh                  # 初始化：生成随机密钥与 .env
 └── .goreleaser.yaml
 ```
 
@@ -137,7 +140,46 @@ version; see `src/templates/registry.ts`. Append `?template=vault` to preview on
 **i18n.** Both frontends and all API responses are localized — Simplified Chinese, Traditional
 Chinese, and English. Do not hard-code user-facing strings on either side.
 
+## 一键自部署（Docker Compose，推荐）
+
+不需要装 Go / Node / Nginx，只要 Docker 就能跑（Docker 20.10+，Docker Compose v2）。
+
+```bash
+git clone https://github.com/ashleyrios539/dujiao-next-selfhost.git
+cd dujiao-next-selfhost
+./setup.sh              # 生成 .env：随机密钥、随机后台路径、强管理员密码
+docker compose up -d    # 构建镜像并启动（首次构建含前端编译，约 5~15 分钟）
+```
+
+启动后：
+
+- 商城首页：`http://<服务器IP>:8080`
+- 后台：`http://<服务器IP>:8080<后台路径>`（`./setup.sh` 会打印后台路径，即 `.env` 里的 `WEB_ADMIN_PATH`）
+- 用 `./setup.sh` 打印的管理员账号/密码登录后台，登录后请立即修改密码并开启 2FA。
+
+常用操作：
+
+```bash
+docker compose ps                                # 查看状态
+docker compose exec app tail -f /app/logs/app.log    # 查看运行日志（release 模式日志写文件，不走容器 stdout）
+docker compose down                              # 停止（数据保留在 ./data/）
+docker compose exec app ./dujiao-next admin list-admins     # 查看管理员列表
+docker compose exec app ./dujiao-next admin reset-password --username <管理员用户名>   # 忘记密码时重置
+git pull && docker compose build && docker compose up -d    # 升级（数据与配置保留）
+```
+
+说明：
+
+- 数据全部保存在宿主机 `./data/`（SQLite 数据库、上传文件、日志、Redis 数据），备份整体拷贝该目录即可；`docker compose down` 不带 `-v` 不会删除数据。
+- release 模式下应用日志写入 `./data/logs/app.log`，不打印到容器 stdout；查看运行日志用上面的 `docker compose exec app tail -f /app/logs/app.log`。
+- 配置全部走 `.env` 环境变量，优先级高于 `config.yml`；需要完整自定义时，也可挂载自己的 `config.yml` 到 `/app/config.yml`。
+- 默认附带内置 Redis 容器（数据在 `./data/redis`）。如需外置 Redis，改 `docker-compose.yml` 中 `app` 服务的 `REDIS_HOST` / `QUEUE_HOST`。`REDIS_ENABLED=false` 只关闭 Redis 缓存/限流等功能；**异步队列是否启用由 `QUEUE_ENABLED` 单独控制**（默认开启，依赖 Redis）。
+- 容器内以 root 运行（与既有 Dockerfile 一致）。如对隔离性有更高要求，可给 `app` 服务加 `user: "10001:10001"`，并先执行 `chown -R 10001:10001 ./data`。
+- 想省去「构建镜像」的时间，可改用预编译二进制部署，见下文「Quick Start (Deploy)」。
+
 ## Quick Start (Deploy)
+
+> 不想自己编译、想用最省事的 Docker 方式，见上方「一键自部署（Docker Compose，推荐）」。以下为预编译二进制部署。
 
 Download the latest `dujiao-next_*.tar.gz` release:
 

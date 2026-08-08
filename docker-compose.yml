@@ -1,0 +1,56 @@
+# Dujiao-Next 简易自部署（Docker Compose）
+#
+# 首次部署：
+#   ./setup.sh               # 生成 .env（随机密钥 / 随机后台路径 / 强管理员密码）
+#   docker compose up -d     # 构建并启动（首次构建需几分钟，含前端编译）
+#
+# 说明：
+#   - 应用（单镜像全栈二进制）+ 内置 Redis 一起启动。
+#   - 对外端口由 .env 的 APP_PORT 控制，默认 8080。
+#   - 数据保存在宿主机 ./data/{db,uploads,logs}，备份时整体拷贝即可。
+#   - 配置全部走 .env 环境变量（优先级高于 config.yml）。
+#
+services:
+  app:
+    image: dujiao-next:local
+    build:
+      context: .
+    container_name: dujiao-next
+    env_file:
+      - .env
+    environment:
+      # 默认使用 compose 网络内的内置 Redis；如需外置 Redis，改这两项或设 REDIS_ENABLED=false
+      REDIS_HOST: redis
+      QUEUE_HOST: redis
+      # 数据统一落在 /app 下，由下方卷持久化到 ./data
+      DATABASE_DSN: ./db/dujiao.db
+      LOG_DIR: /app/logs
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - ./data/db:/app/db
+      - ./data/uploads:/app/uploads
+      - ./data/logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: dujiao-next-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped

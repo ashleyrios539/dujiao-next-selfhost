@@ -4,10 +4,13 @@
 .vscode
 .DS_Store
 
-# 运行时数据，不属于构建上下文
+# 运行时数据与密钥，不属于构建上下文
+# .env 绝不能进镜像：Dockerfile 里有 COPY . .，进去就会被烤进镜像层
+.env
 db/
 uploads/
 logs/
+data/
 config.yml
 *.db
 *.log
