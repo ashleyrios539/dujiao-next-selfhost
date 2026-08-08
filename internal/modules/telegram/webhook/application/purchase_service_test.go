@@ -981,6 +981,35 @@ func TestPurchaseServicePickOptionLabelsLocalized(t *testing.T) {
 	}
 }
 
+// TestPurchaseServiceCountryKeyboardStockLocalized 验证国家选择按钮的库存文案随用户语言本地化，
+// 不再硬编码中文「库存」（回归：英文用户曾看到中文库存文案）。
+func TestPurchaseServiceCountryKeyboardStockLocalized(t *testing.T) {
+	svc := newPurchaseService(contract.PurchasePorts{}, &fakeBotAPI{}, func() string { return "zh-CN" })
+	stock := &contract.ShopPickStock{
+		Countries: []contract.ShopPickCountry{
+			{Code: "US", Name: "美国", Stock: 5},
+		},
+	}
+	zh := &purchaseView{locale: "zh-CN", pickStock: stock}
+	en := &purchaseView{locale: "en-US", pickStock: stock}
+
+	zhKb := svc.countryKeyboard(zh, 1)
+	if !keyboardContains(zhKb, "库存 5") {
+		t.Fatalf("zh country keyboard should show localized stock 「库存 5」, got: %+v", zhKb)
+	}
+	if keyboardContains(zhKb, "Stock 5") {
+		t.Fatalf("zh country keyboard must not show English stock label, got: %+v", zhKb)
+	}
+
+	enKb := svc.countryKeyboard(en, 1)
+	if !keyboardContains(enKb, "Stock 5") {
+		t.Fatalf("en country keyboard should show localized stock 「Stock 5」, got: %+v", enKb)
+	}
+	if keyboardContains(enKb, "库存") {
+		t.Fatalf("en country keyboard must not show Chinese stock label, got: %+v", enKb)
+	}
+}
+
 func TestPurchaseServiceToggleLanguageSendsNewLocaleMenu(t *testing.T) {
 	bot := &fakeBotAPI{}
 	svc := newPurchaseService(contract.PurchasePorts{

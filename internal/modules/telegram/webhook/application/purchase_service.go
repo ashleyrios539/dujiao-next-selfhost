@@ -2028,7 +2028,7 @@ func (s *purchaseService) countryKeyboard(view *purchaseView, page int) inlineKe
 	for _, c := range all[start:end] {
 		label := countries.EmojiFlag(c.Code) + " " + c.Code
 		if c.Stock > 0 {
-			label += fmt.Sprintf(" (库存%d)", c.Stock)
+			label += " " + fmt.Sprintf(s.t(view, "purchase.country_stock"), c.Stock)
 		}
 		row = append(row, inlineButton{
 			Text:         label,
@@ -2286,6 +2286,7 @@ var purchaseTexts = map[string]settingsmessaging.LocalizedText{
 	"purchase.pick_mode_desc":   {"zh-CN": "随机：只选国家；挑头：输入 BIN；挑卡种类：选国家+品牌+卡类型。", "zh-TW": "隨機：只選國家；挑頭：輸入 BIN；挑卡種類：選國家+品牌+卡類型。", "en-US": "Random: country only. By BIN: enter a BIN. By type: country + brand + card type."},
 	"purchase.country_title":    {"zh-CN": "选择国家", "zh-TW": "選擇國家", "en-US": "Select country"},
 	"purchase.country_desc":     {"zh-CN": "点击下方国家，或直接回复双字母代码（如 US）。", "zh-TW": "點擊下方國家，或直接回覆雙字母代碼（如 US）。", "en-US": "Tap a country below or reply a 2-letter code (e.g. US)."},
+	"purchase.country_stock":    {"zh-CN": "库存 %d", "zh-TW": "庫存 %d", "en-US": "Stock %d"},
 	"purchase.brand_title":      {"zh-CN": "选择品牌", "zh-TW": "選擇品牌", "en-US": "Select brand"},
 	"purchase.brand_desc":       {"zh-CN": "选择品牌：", "zh-TW": "選擇品牌：", "en-US": "Select a brand:"},
 	"purchase.card_type_title":  {"zh-CN": "选择卡类型", "zh-TW": "選擇卡類型", "en-US": "Select card type"},
