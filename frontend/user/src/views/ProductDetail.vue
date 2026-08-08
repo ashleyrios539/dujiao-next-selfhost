@@ -623,7 +623,7 @@ const {
   isPickBothRandom,
   pickMode, pickBin, selectPickMode,
   countrySearch, countryDropdownOpen, selectCountry, onCountryBlur, filteredCountries, selectedCountryName,
-  pickAvailableCount, pickUnitSurcharge, selectionStockCount, selectionStockLoading,
+  pickUnitSurcharge, selectionStockCount, selectionStockLoading,
   selectedSkuMemberPrice, hasMemberPrice,
   hasSelectedSkuWholesalePrice, selectedSkuWholesaleFinalIsMember, selectedSkuWholesaleFinalPrice,
   selectedSkuWholesaleRules,
