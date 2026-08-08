@@ -342,9 +342,6 @@
                       </div>
                     </div>
                     <p v-if="pickStockLoading" class="mt-1.5 text-xs text-muted-foreground">{{ t('productDetail.pickStockLoading') }}</p>
-                    <p v-else-if="pickCountry" class="mt-1.5 text-xs" :class="pickAvailableCount > 0 ? 'text-emerald-600' : 'text-destructive'">
-                      {{ t('productDetail.pickAvailable', { count: pickAvailableCount }) }}
-                    </p>
                   </div>
 
                   <!-- 挑头购买：BIN 输入 -->
@@ -358,10 +355,6 @@
                       class="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm font-mono tracking-widest outline-none transition-colors focus:border-primary"
                       :placeholder="t('productDetail.pickBinLabel')"
                     />
-                    <p v-if="binStockLoading" class="mt-1.5 text-xs text-muted-foreground">{{ t('productDetail.pickStockLoading') }}</p>
-                    <p v-else-if="pickBin.length === 6 && /^\d{6}$/.test(pickBin)" class="mt-1.5 text-xs" :class="(binStockCount ?? 0) > 0 ? 'text-emerald-600' : 'text-destructive'">
-                      {{ t('productDetail.pickBinAvailable', { count: binStockCount ?? 0 }) }}
-                    </p>
                   </div>
 
                   <!-- 挑卡种类：首位 + 种类单选 chips -->
@@ -380,13 +373,6 @@
                           @click="togglePickHead(head.value)"
                         >{{ head.label }}</button>
                       </div>
-                      <p v-if="headStockLoading" class="mt-1.5 text-xs text-muted-foreground">{{ t('productDetail.pickStockLoading') }}</p>
-                      <p v-else-if="pickHead && pickHead !== 'random' && (headStockCount ?? 0) === 0" class="mt-1.5 text-xs text-destructive">
-                        {{ t('productDetail.pickHeadAvailable', { count: headStockCount ?? 0 }) }}
-                      </p>
-                      <p v-else-if="pickHead && pickHead !== 'random'" class="mt-1.5 text-xs text-emerald-600">
-                        {{ t('productDetail.pickHeadAvailable', { count: headStockCount ?? 0 }) }}
-                      </p>
                     </div>
                     <div>
                       <label class="mb-2 block text-sm font-medium text-foreground">{{ t('productDetail.pickTypeLabel') }}</label>
@@ -417,10 +403,16 @@
                     </p>
                   </template>
 
-                  <!-- 当前所选 -->
-                  <div v-if="pickMode" class="rounded-lg bg-muted/60 px-3.5 py-2.5 text-sm">
-                    <span class="text-muted-foreground">{{ t('productDetail.pickSelectionLabel') }}：</span>
-                    <span class="font-medium text-foreground">{{ pickSelectionSummary || t('productDetail.pickSelectionEmpty') }}</span>
+                  <!-- 当前所选 + 同行动态库存 -->
+                  <div v-if="pickMode" class="flex items-center justify-between gap-2 rounded-lg bg-muted/60 px-3.5 py-2.5 text-sm">
+                    <span class="min-w-0">
+                      <span class="text-muted-foreground">{{ t('productDetail.pickSelectionLabel') }}：</span>
+                      <span class="font-medium text-foreground">{{ pickSelectionSummary || (pickMode === 'bin' ? t('productDetail.pickBinSelectionHint') : t('productDetail.pickSelectionEmpty')) }}</span>
+                    </span>
+                    <span v-if="selectionStockLoading" class="shrink-0 text-xs text-muted-foreground">{{ t('productDetail.pickStockLoadingInline') }}</span>
+                    <span v-else-if="selectionStockCount !== null" class="shrink-0 text-xs font-medium" :class="selectionStockCount > 0 ? 'text-emerald-600' : 'text-destructive'">
+                      {{ t('productDetail.pickStockInline', { count: selectionStockCount }) }}
+                    </span>
                   </div>
 
                   <!-- 加价提示（最终单价在下方测活区统一展示） -->
@@ -629,9 +621,9 @@ const {
   pickEnabled, pickCountry, pickHead, pickCardTypes, pickStockLoading,
   pickHeadOptions, pickTypeOptions, togglePickHead, togglePickType, pickSelectionSummary,
   isPickBothRandom,
-  pickMode, pickBin, binStockCount, binStockLoading, headStockCount, headStockLoading, selectPickMode,
+  pickMode, pickBin, selectPickMode,
   countrySearch, countryDropdownOpen, selectCountry, onCountryBlur, filteredCountries, selectedCountryName,
-  pickAvailableCount, pickUnitSurcharge,
+  pickAvailableCount, pickUnitSurcharge, selectionStockCount, selectionStockLoading,
   selectedSkuMemberPrice, hasMemberPrice,
   hasSelectedSkuWholesalePrice, selectedSkuWholesaleFinalIsMember, selectedSkuWholesaleFinalPrice,
   selectedSkuWholesaleRules,

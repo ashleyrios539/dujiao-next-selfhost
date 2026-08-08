@@ -222,9 +222,9 @@ reseller:
 | 计价与快照 | `internal/modules/order/application/order_service_validate.go` | `buildOrderResult`：国家必选校验 + 挑卡加价并入 basePrice；订单项 `PickCountry`/`PickBrands`/`PickCardTypes` 快照 |
 | 预留过滤 | `internal/modules/order/application/order_service.go` | 预留卡密按订单项挑卡快照过滤，组合不足 `ErrCardSecretInsufficient` |
 | 交付过滤 | `internal/modules/fulfillment/application/check.go` + `service.go` | 测活 pool 与未测活直取均按挑卡快照过滤 |
-| 挑卡库存接口 | `internal/modules/catalog/product/transport/http/public_handler.go` | `GET /public/products/:slug/pick-stock`（SKU/国家/品牌/种类聚合 + 国家字典） |
+| 挑卡库存接口 | `internal/modules/catalog/product/transport/http/public_handler.go` | `GET /public/products/:slug/pick-stock`（SKU/国家/品牌/种类聚合 + 国家字典）；`GET /public/products/:slug/pick-count?country=&bin=&card_type=`（三维实时库存，与发货 `buildPickQuery` 一致，D 展开 D+PD） |
 | 国家字典 | `internal/shared/countries/` | ISO 3166-1 alpha-2 → 中文名静态表 |
-| 前端 | `frontend/user/src/composables/useProductDetail.ts`、`views/ProductDetail.vue`、`templates/vault/ProductDetail.vue`、`stores/cart.ts`、`composables/useCheckout.ts` | 国家必选 + 首位/种类挑卡（挑卡种类模式：3/4/5/6头 chips + DEBIT/CREDIT chips）+ 实时可发数 + 加价展示 + 快照携带 |
+| 前端 | `frontend/user/src/composables/useProductDetail.ts`、`views/ProductDetail.vue`、`templates/vault/ProductDetail.vue`、`stores/cart.ts`、`composables/useCheckout.ts` | 国家必选 + 首位/种类挑卡（挑卡种类模式：3/4/5/6头 chips + DEBIT/CREDIT chips）+ 「当前所选」灰框同行动态库存（`pick-count` 三维实时） + 加价展示 + 快照携带 |
 | 管理端 | `frontend/admin/src/views/admin/CardBins.vue`、`CardSecrets.vue`、`components/ProductEditModal.vue` | BIN 库上传/列映射/种类规则、卡密属性列与过滤、商品挑卡加价表（`pickPriceKeys = bin,head3-6,D,PD,C`） |
 
 ### 挑卡关键约定
@@ -274,3 +274,14 @@ CGO_ENABLED=0 go build -trimpath -tags release,fullstack -o dujiao-next ./cmd/se
 - 数据库迁移用 GORM `AutoMigrate`（`internal/bootstrap/database/migrations/registry.go`），新增实体字段需在此注册
 - 交付测活发生在事务外，死卡标记用独立 `BatchUpdateStatus`，避免长事务持锁
 - 改动涉及订单/交付/商品三处时，务必跑 `go test ./internal/architecture/...` 和对应模块测试
+
+## 网页挑头文案修正 + 「当前所选」同行动态库存
+
+- **挑头模式文案**：网页端「当前所选」灰框为空时兜底文案原是「请选择国家」，但挑头(BIN)模式不选国家。已改为：挑头模式空态显示 `pickBinSelectionHint`（「请输入 BIN」），其余空态 `pickSelectionEmpty` 改中性「未选择」。i18n 三语同步（`pickSelectionEmpty`/`pickBinSelectionHint`）。
+- **同行动态库存**：取消挑卡区原本分散的三处库存提示（「该组合可发 N 张」「该首位可发 N 张」「该 BIN 可发 N 张」），改为「当前所选」灰框**同一行右侧**显示库存，随用户选择逐步筛选。新增后端端点 `GET /public/products/:slug/pick-count?country=&bin=&card_type=`，复用 `CountAvailableByProductFiltered`（与发货 `buildPickQuery` 逻辑一致——Country 精确、BinPrefix 1-5 位 LIKE/6 位精确、CardTypes IN 且 D 展开 D+PD）。
+  - composable 新增 `selectionStockCount`/`selectionStockLoading` + `refreshSelectionStock`（debounce 400ms），watch `[pickMode, pickCountry, pickHead, pickCardTypes, pickBin]` 触发；未达可查条件（随机模式未选国家、BIN 未输够 6 位）时不显示。`canPurchase` 增加 `selectionStockCount < quantity` 阻断（`null` 不阻断，后端发货再校验）。
+  - 挑头(bin)模式：`{bin: pickBin(6位)}`，无国家。
+  - 随机模式：`{country: pickCountry}`。
+  - 挑卡种类(type)模式：`{country, bin: pickHead(1位,非random), card_type: pickCardTypes(去random,逗号拼接)}`。
+- **未做（用户决策取消）**：测活不够时「发活卡+退余额」功能取消，保留原整单失败逻辑；取消游客购买取消，保留游客购买权限。
+- 测试：`pick_count_http_test.go`（已合并入 `public_price_http_test.go`，4 用例：country+bin+D 展开、6 位精确、C+D 多选、无过滤）+ 架构文件预算约束。

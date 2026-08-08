@@ -53,6 +53,10 @@ func (staticPublicProductQueries) CountAvailableByBinPrefix(uint, string) (int64
 	return 0, nil
 }
 
+func (staticPublicProductQueries) CountAvailableByProductFiltered(uint, uint, cardsecretcontract.PickFilter) (int64, error) {
+	return 0, nil
+}
+
 type emptyRelatedPostReader struct{}
 
 func (emptyRelatedPostReader) ListPostsForProduct(context.Context, uint, int) ([]contentcontract.RelatedPost, error) {
@@ -131,5 +135,118 @@ func TestPublicProductHTTPPromotionUsesDisplayPrice(t *testing.T) {
 	}
 	if !envelope.Data.PromotionPriceAmount.Decimal.Equal(expectedPromotion) {
 		t.Fatalf("expected promotion display price %s, got %s", expectedPromotion, envelope.Data.PromotionPriceAmount.String())
+	}
+}
+
+// pickCountStub 是 pick-count 端点测试用的 PublicProductQueries stub，记录最后一次收到的 filter。
+type pickCountStub struct {
+	product productdomain.Product
+	count   int64
+	last    cardsecretcontract.PickFilter
+	called  bool
+}
+
+func (s *pickCountStub) ListPublicForTenant(reseller.TenantContext, string, string, int, int) ([]productdomain.Product, int64, error) {
+	return []productdomain.Product{s.product}, 1, nil
+}
+func (s *pickCountStub) GetPublicBySlugForTenant(reseller.TenantContext, string) (*productdomain.Product, error) {
+	p := s.product
+	return &p, nil
+}
+func (s *pickCountStub) ApplyAutoStockCounts([]productdomain.Product) error { return nil }
+func (s *pickCountStub) CountPickAttrs(uint) ([]cardsecretcontract.PickAttrCount, error) {
+	return nil, nil
+}
+func (s *pickCountStub) CountAvailableByBinPrefix(uint, string) (int64, error) { return 0, nil }
+func (s *pickCountStub) CountAvailableByProductFiltered(_ uint, _ uint, filter cardsecretcontract.PickFilter) (int64, error) {
+	s.called = true
+	s.last = filter
+	return s.count, nil
+}
+
+func TestPublicProductHTTPPickCount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	product := productdomain.Product{ID: 42, Slug: "test"}
+	cases := []struct {
+		name  string
+		query string
+		count int64
+		want  cardsecretcontract.PickFilter
+	}{
+		{
+			name:  "country+bin+card_type D expands to D+PD",
+			query: "?country=us&bin=4&card_type=D",
+			count: 12,
+			want: cardsecretcontract.PickFilter{
+				Country:   "us",
+				BinPrefix: "4",
+				CardTypes: []string{"D", "PD"},
+			},
+		},
+		{
+			name:  "6-digit bin exact",
+			query: "?bin=411111",
+			count: 3,
+			want:  cardsecretcontract.PickFilter{BinPrefix: "411111"},
+		},
+		{
+			name:  "multi card_type C+D",
+			query: "?country=gb&card_type=C,D",
+			count: 7,
+			want: cardsecretcontract.PickFilter{
+				Country:   "gb",
+				CardTypes: []string{"C", "D", "PD"},
+			},
+		},
+		{
+			name:  "no filter returns total",
+			query: "",
+			count: 99,
+			want:  cardsecretcontract.PickFilter{},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := &pickCountStub{product: product, count: tc.count}
+			handler := producthttp.NewPublicHandler(stub, nil, nil, nil, nil, nil, emptyRelatedPostReader{})
+			router := gin.New()
+			producthttp.RegisterPublicRoutes(router, handler)
+
+			req := httptest.NewRequest(http.MethodGet, "/products/test/pick-count"+tc.query, nil)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+			}
+			if !stub.called {
+				t.Fatal("CountAvailableByProductFiltered not called")
+			}
+			if stub.last.Country != tc.want.Country {
+				t.Errorf("Country = %q, want %q", stub.last.Country, tc.want.Country)
+			}
+			if stub.last.BinPrefix != tc.want.BinPrefix {
+				t.Errorf("BinPrefix = %q, want %q", stub.last.BinPrefix, tc.want.BinPrefix)
+			}
+			if len(stub.last.CardTypes) != len(tc.want.CardTypes) {
+				t.Fatalf("CardTypes = %v, want %v", stub.last.CardTypes, tc.want.CardTypes)
+			}
+			for i, ct := range tc.want.CardTypes {
+				if stub.last.CardTypes[i] != ct {
+					t.Errorf("CardTypes[%d] = %q, want %q", i, stub.last.CardTypes[i], ct)
+				}
+			}
+			var env struct {
+				Data struct {
+					Count int64 `json:"count"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if env.Data.Count != tc.count {
+				t.Errorf("count = %d, want %d", env.Data.Count, tc.count)
+			}
+		})
 	}
 }

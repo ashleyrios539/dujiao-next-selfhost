@@ -261,6 +261,15 @@ func (s *Service) CountAvailableByBinPrefix(productID uint, bin string) (int64, 
 	return s.stock.CountAvailableByProductFiltered(productID, 0, cardsecretcontract.PickFilter{BinPrefix: bin})
 }
 
+// CountAvailableByProductFiltered 按挑卡条件（国家/品牌/种类/BIN 前缀）实时统计可用卡密数量。
+// 与后端发货 buildPickQuery 逻辑一致，供「当前所选」灰框同行动态库存展示。
+func (s *Service) CountAvailableByProductFiltered(productID, skuID uint, filter cardsecretcontract.PickFilter) (int64, error) {
+	if s.stock == nil {
+		return 0, nil
+	}
+	return s.stock.CountAvailableByProductFiltered(productID, skuID, filter)
+}
+
 // CountByBinHead 按卡号首位聚合商品可用卡密库存（bot 首位挑卡 3头/4头/5头/6头 展示）。
 func (s *Service) CountByBinHead(productID uint) ([]cardsecretcontract.BinHeadCount, error) {
 	if s.stock == nil {

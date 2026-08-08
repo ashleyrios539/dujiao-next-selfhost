@@ -12,6 +12,7 @@ import (
 	mappingdomain "github.com/dujiao-next/internal/modules/catalog/mapping/domain"
 
 	cardsecretcontract "github.com/dujiao-next/internal/modules/cardsecret/contract"
+	cardsecretdomain "github.com/dujiao-next/internal/modules/cardsecret/domain"
 	productcontract "github.com/dujiao-next/internal/modules/catalog/product/contract"
 	productdomain "github.com/dujiao-next/internal/modules/catalog/product/domain"
 	productpresenter "github.com/dujiao-next/internal/modules/catalog/product/transport/presenter"
@@ -36,6 +37,9 @@ type PublicProductQueries interface {
 	ApplyAutoStockCounts(products []productdomain.Product) error
 	CountPickAttrs(productID uint) ([]cardsecretcontract.PickAttrCount, error)
 	CountAvailableByBinPrefix(productID uint, bin string) (int64, error)
+	// CountAvailableByProductFiltered 按挑卡条件（国家/品牌/种类/BIN 前缀）实时统计可用卡密数量。
+	// 与后端发货 buildPickQuery 逻辑一致，用于「当前所选」灰框同行动态库存展示（所见即所得）。
+	CountAvailableByProductFiltered(productID, skuID uint, filter cardsecretcontract.PickFilter) (int64, error)
 }
 
 // ResellerDisplayPricer 是分销站展示价解析端口。
@@ -249,6 +253,50 @@ func (h *PublicHandler) GetProductPickStock(c *gin.Context) {
 		"items":     items,
 		"countries": countries.List(),
 	})
+}
+
+// GetProductPickCount 按「当前所选」三维条件（国家/首位/种类）实时统计可用卡密数量。
+// 与后端发货 buildPickQuery 逻辑一致：Country 精确、BinPrefix 1-5 位 LIKE/6 位精确、CardTypes IN（D 展开为 D+PD）。
+// query 均可选，空 = 不限该维度；全空返回该商品总可用库存。
+func (h *PublicHandler) GetProductPickCount(c *gin.Context) {
+	slug := c.Param("slug")
+	tenant := tenantFromRequest(c)
+
+	product, err := h.products.GetPublicBySlugForTenant(tenant, slug)
+	if err != nil {
+		if errors.Is(err, productcontract.ErrNotFound) {
+			ginutil.RespondError(c, response.CodeNotFound, "error.product_not_found", nil)
+			return
+		}
+		ginutil.RespondError(c, response.CodeInternal, "error.product_fetch_failed", err)
+		return
+	}
+
+	filter := cardsecretcontract.PickFilter{
+		Country:   strings.TrimSpace(c.Query("country")),
+		BinPrefix: strings.TrimSpace(c.Query("bin")),
+	}
+	if raw := strings.TrimSpace(c.Query("card_type")); raw != "" {
+		for _, ct := range strings.Split(raw, ",") {
+			ct = strings.ToUpper(strings.TrimSpace(ct))
+			if ct == "" {
+				continue
+			}
+			// D（含预付）是超集：覆盖 D 与纯 D（PD），与 buildPickQuery.expandPickCardTypes 一致。
+			if ct == cardsecretdomain.CardTypeD {
+				filter.CardTypes = append(filter.CardTypes, cardsecretdomain.CardTypeD, cardsecretdomain.CardTypePD)
+			} else {
+				filter.CardTypes = append(filter.CardTypes, ct)
+			}
+		}
+	}
+
+	count, err := h.products.CountAvailableByProductFiltered(product.ID, 0, filter)
+	if err != nil {
+		ginutil.RespondError(c, response.CodeInternal, "error.product_fetch_failed", err)
+		return
+	}
+	response.Success(c, gin.H{"count": count})
 }
 
 func (h *PublicHandler) loadRelatedPostCards(ctx context.Context, productID uint) ([]productpresenter.RelatedPost, error) {

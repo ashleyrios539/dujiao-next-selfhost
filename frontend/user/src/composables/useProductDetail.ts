@@ -383,6 +383,8 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
         }
         if (pickAvailableCount.value < quantity.value) return false
       }
+      // 「当前所选」灰框同行动态库存：实时三维计数为 0 时不允许下单（null = 加载中/未查，不阻断，后端发货再校验）。
+      if (selectionStockCount.value !== null && selectionStockCount.value < quantity.value) return false
     }
     return true
   })
@@ -404,6 +406,7 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
         }
         if (pickAvailableCount.value < quantity.value) return t('productDetail.pickStockInsufficient', { count: pickAvailableCount.value })
       }
+      if (selectionStockCount.value !== null && selectionStockCount.value < quantity.value) return t('productDetail.pickStockInsufficient', { count: selectionStockCount.value })
     }
     if (canPurchase.value) return ''
     return t('productDetail.stockUnavailable')
@@ -872,6 +875,9 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     pickBin.value = ''
     binStockCount.value = null
     headStockCount.value = null
+    selectionStockCount.value = null
+    selectionStockLoading.value = false
+    if (selectionStockTimer) { clearTimeout(selectionStockTimer); selectionStockTimer = null }
     countrySearch.value = ''
   }
 
@@ -951,6 +957,60 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     if (pickMode.value === 'type') checkHeadStock()
   })
 
+  // 「当前所选」灰框同行动态库存：随国家/首位/种类选择逐步筛选，实时调 pick-count 端点。
+  // 与后端发货 buildPickQuery 逻辑一致——所见即所得。未达可查条件时不显示。
+  const selectionStockCount = ref<number | null>(null)
+  const selectionStockLoading = ref(false)
+  let selectionStockTimer: ReturnType<typeof setTimeout> | null = null
+
+  const buildPickCountParams = (): { country?: string; bin?: string; card_type?: string } | null => {
+    if (!pickEnabled.value || !product.value?.slug) return null
+    if (pickMode.value === 'bin') {
+      // 挑头模式：6 位 BIN 才查；无国家。
+      if (!/^\d{6}$/.test(pickBin.value)) return null
+      return { bin: pickBin.value }
+    }
+    // 随机 / 挑卡种类模式：均需先选国家，否则不显示库存。
+    if (!pickCountry.value) return null
+    const params: { country?: string; bin?: string; card_type?: string } = { country: pickCountry.value }
+    if (pickMode.value === 'type') {
+      // 首位：1 位具体数字（非 random）。
+      if (pickHead.value && pickHead.value !== PICK_RANDOM && pickHead.value.length === 1) {
+        params.bin = pickHead.value
+      }
+      // 种类：去 random，逗号拼接（后端按需展开 D→D+PD）。
+      const types = pickCardTypes.value.filter((t) => t !== PICK_RANDOM)
+      if (types.length > 0) params.card_type = types.join(',')
+    }
+    return params
+  }
+
+  const refreshSelectionStock = async () => {
+    if (selectionStockTimer) clearTimeout(selectionStockTimer)
+    const params = buildPickCountParams()
+    if (params === null) {
+      selectionStockCount.value = null
+      selectionStockLoading.value = false
+      return
+    }
+    selectionStockTimer = setTimeout(async () => {
+      selectionStockLoading.value = true
+      try {
+        const response = await productAPI.pickCount(product.value.slug, params)
+        selectionStockCount.value = Number(response.data.data?.count ?? 0)
+      } catch {
+        selectionStockCount.value = null
+      } finally {
+        selectionStockLoading.value = false
+      }
+    }, 400)
+  }
+
+  watch(
+    [pickMode, pickCountry, pickHead, pickCardTypes, pickBin],
+    () => { refreshSelectionStock() },
+  )
+
   const resetPickSelection = () => {
     pickMode.value = ''
     pickCountry.value = ''
@@ -959,6 +1019,9 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     pickBin.value = ''
     binStockCount.value = null
     headStockCount.value = null
+    selectionStockCount.value = null
+    selectionStockLoading.value = false
+    if (selectionStockTimer) { clearTimeout(selectionStockTimer); selectionStockTimer = null }
     countrySearch.value = ''
     countryDropdownOpen.value = false
   }
@@ -989,6 +1052,7 @@ export function useProductDetail(options: { onLoaded?: () => void } = {}) {
     pickMode, pickBin, binStockCount, binStockLoading, headStockCount, headStockLoading, selectPickMode,
     countrySearch, countryDropdownOpen, selectCountry, onCountryBlur, filteredCountries, selectedCountryName,
     availableCountries, pickAvailableCount, pickUnitSurcharge, pickUnitPrice,
+    selectionStockCount, selectionStockLoading,
     resetPickSelection,
     // 价格计算
     selectedSkuMemberPrice, hasMemberPrice,

@@ -55,6 +55,10 @@ func (adapter publicProductAdapter) CountAvailableByBinPrefix(productID uint, bi
 	return adapter.products.CountAvailableByBinPrefix(productID, bin)
 }
 
+func (adapter publicProductAdapter) CountAvailableByProductFiltered(productID, skuID uint, filter cardsecretcontract.PickFilter) (int64, error) {
+	return adapter.products.CountAvailableByProductFiltered(productID, skuID, filter)
+}
+
 // NewPublicHTTP 装配公开 Product HTTP Handler。
 func NewPublicHTTP(dependencies PublicHTTPDependencies) *producthttp.PublicHandler {
 	var promotions producthttp.ProductPromotionDecorator
