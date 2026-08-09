@@ -16,24 +16,23 @@ import (
 
 // UpdateHandler 处理 Telegram webhook 推送。
 type UpdateHandler struct {
-	service     contract.Service
-	secretToken string
+	service contract.Service
 }
 
 // NewUpdateHandler 构造 webhook 处理器。
-// secretToken 为可选的 Telegram webhook secret_token，非空时校验 X-Telegram-Bot-Api-Secret-Token。
-func NewUpdateHandler(service contract.Service, secretToken string) *UpdateHandler {
+// secret_token 从 service.CurrentSecret() 实时读取：后台保存 webhook 配置后立即热更新，无需重启。
+func NewUpdateHandler(service contract.Service) *UpdateHandler {
 	if service == nil {
 		panic("telegram webhook handler: service is nil")
 	}
-	return &UpdateHandler{service: service, secretToken: strings.TrimSpace(secretToken)}
+	return &UpdateHandler{service: service}
 }
 
 // HandleUpdate POST /api/v1/telegram/webhook
 func (h *UpdateHandler) HandleUpdate(c *gin.Context) {
-	if h.secretToken != "" {
+	if secret := strings.TrimSpace(h.service.CurrentSecret()); secret != "" {
 		got := strings.TrimSpace(c.GetHeader("X-Telegram-Bot-Api-Secret-Token"))
-		if got != h.secretToken {
+		if got != secret {
 			response.ErrorWithHTTPStatus(c, http.StatusUnauthorized, response.CodeUnauthorized, "error.telegram_webhook_unauthorized")
 			return
 		}
@@ -63,9 +62,4 @@ func (h *UpdateHandler) HandleUpdate(c *gin.Context) {
 	}()
 
 	response.Success(c, gin.H{"ok": true})
-}
-
-// SetSecretToken 更新 secret_token（配置热更新时调用）。
-func (h *UpdateHandler) SetSecretToken(secretToken string) {
-	h.secretToken = strings.TrimSpace(secretToken)
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/dujiao-next/internal/cache"
 	"github.com/dujiao-next/internal/constants"
 	settingsapp "github.com/dujiao-next/internal/modules/settings/application"
+	settingsmessaging "github.com/dujiao-next/internal/modules/settings/schema/messaging"
 	ginutil "github.com/dujiao-next/internal/platform/http/ginutil"
 	"github.com/dujiao-next/internal/platform/http/response"
 	"github.com/dujiao-next/internal/shared/jsonmap"
@@ -51,6 +52,11 @@ func (h *AdminHandler) Get(c *gin.Context) {
 		return
 	}
 
+	// telegram_bot_config 含 webhook.secret_token，通用读取必须打码（专用路由已 Mask）。
+	if key == constants.SettingKeyTelegramBotConfig {
+		value = settingsmessaging.SanitizeTelegramBotConfigForGenericRead(value)
+	}
+
 	response.Success(c, value)
 }
 
@@ -66,6 +72,17 @@ func (h *AdminHandler) Update(c *gin.Context) {
 			c,
 			response.CodeBadRequest,
 			"google_auth_config must be updated through /admin/settings/google-auth",
+			nil,
+		)
+		return
+	}
+	// telegram_bot_config 含 webhook secret，通用写入会绕过专用路由的「留空保留原值」与打码，
+	// 禁止走通用路径（改为 /admin/settings/telegram-bot）。
+	if strings.TrimSpace(req.Key) == constants.SettingKeyTelegramBotConfig {
+		ginutil.RespondErrorWithMsg(
+			c,
+			response.CodeBadRequest,
+			"telegram_bot_config must be updated through /admin/settings/telegram-bot",
 			nil,
 		)
 		return

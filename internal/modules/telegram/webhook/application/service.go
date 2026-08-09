@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/dujiao-next/internal/logger"
 	settingsmessaging "github.com/dujiao-next/internal/modules/settings/schema/messaging"
 	"github.com/dujiao-next/internal/modules/telegram/webhook/contract"
 	webhookdomain "github.com/dujiao-next/internal/modules/telegram/webhook/domain"
@@ -17,6 +19,13 @@ type Service struct {
 	tokens  contract.BotTokenResolver
 	botapi  contract.BotAPIClient
 	purchase *purchaseService
+
+	// configFallback* 是 config.yml / .env 的 telegram_webhook 兜底值（网页未配置时使用）。
+	configFallbackURL    string
+	configFallbackSecret string
+	// runtimeSecret 是当前生效的 webhook secret_token，供入站请求校验（网页保存 / 启动时同步）。
+	mu            sync.RWMutex
+	runtimeSecret string
 }
 
 // NewService 构造 webhook 应用服务。
@@ -31,6 +40,60 @@ func NewService(config contract.BotConfigReader, tokens contract.BotTokenResolve
 		panic("telegram webhook service: bot api client is nil")
 	}
 	return &Service{config: config, tokens: tokens, botapi: botapi}
+}
+
+// WithConfigFallback 注入 config.yml / .env 的 telegram_webhook 兜底值。
+// 网页后台未配置 webhook 时使用这些值，保证现有部署平滑迁移（升级前怎么配置，升级后仍生效）。
+func (s *Service) WithConfigFallback(webhookURL, secretToken string) *Service {
+	s.configFallbackURL = strings.TrimSpace(webhookURL)
+	s.configFallbackSecret = strings.TrimSpace(secretToken)
+	// 启动时 runtimeSecret 优先取数据库已配置的 secret（DB 优先、config 兜底），
+	// 避免 HTTP 服务开始收请求到首次 ApplyConfiguredWebhook 完成之间用错密钥或完全不校验。
+	s.mu.Lock()
+	s.runtimeSecret = s.configFallbackSecret
+	if cfg, err := s.config.GetTelegramBotConfig(); err == nil {
+		if dbSecret := strings.TrimSpace(cfg.Webhook.SecretToken); dbSecret != "" {
+			s.runtimeSecret = dbSecret
+		}
+	}
+	s.mu.Unlock()
+	return s
+}
+
+// ApplyConfiguredWebhook 解析当前生效的 webhook 配置（数据库优先、config 兜底）并应用。
+// 启动与后台保存后都应调用它，保证 URL / secret_token 单一来源、热更新一致。
+// runtimeSecret 只在 ApplyWebhook 成功后更新：若 setWebhook 失败则保留旧值，
+// 使入站校验与 Telegram 上仍注册的 webhook 保持同一密钥，避免 401 分叉。
+func (s *Service) ApplyConfiguredWebhook(ctx context.Context) error {
+	cfg, err := s.config.GetTelegramBotConfig()
+	if err != nil {
+		return err
+	}
+	webhookURL := strings.TrimSpace(cfg.Webhook.URL)
+	if webhookURL == "" {
+		webhookURL = s.configFallbackURL
+	}
+	secretToken := strings.TrimSpace(cfg.Webhook.SecretToken)
+	if secretToken == "" {
+		secretToken = s.configFallbackSecret
+	}
+	if err := s.ApplyWebhook(ctx, webhookURL, secretToken); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.runtimeSecret = secretToken
+	s.mu.Unlock()
+	if cfg.Enabled && secretToken == "" {
+		logger.Warnw("telegram_webhook_no_secret_token", "webhook_url", webhookURL)
+	}
+	return nil
+}
+
+// CurrentSecret 返回当前生效的 webhook secret_token（空表示不校验请求头）。
+func (s *Service) CurrentSecret() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.runtimeSecret
 }
 
 // WithPurchase 注入 bot 内购买端口（可选）。不注入时 bot 内购买功能禁用。
@@ -115,11 +178,14 @@ func (s *Service) ApplyWebhook(ctx context.Context, webhookURL, secretToken stri
 	}
 
 	// 启用且配置了 webhook_url：真正向 Telegram 注册 webhook 并注册命令。
+	// 失败必须原样返回错误（不能只写状态就吞掉），调用方据此保持入站校验密钥不变。
 	if err := s.botapi.SetWebhook(ctx, token, strings.TrimSpace(webhookURL), strings.TrimSpace(secretToken)); err != nil {
-		return s.updateWebhookStatus(cfg, true, "", "set_webhook_failed", []string{err.Error()})
+		_ = s.updateWebhookStatus(cfg, true, "", "set_webhook_failed", []string{err.Error()})
+		return err
 	}
 	if err := s.botapi.SetMyCommands(ctx, token, builtinCommands()); err != nil {
-		return s.updateWebhookStatus(cfg, true, "", "set_commands_failed", []string{err.Error()})
+		_ = s.updateWebhookStatus(cfg, true, "", "set_commands_failed", []string{err.Error()})
+		return err
 	}
 	return s.updateWebhookStatus(cfg, true, "", "active", nil)
 }

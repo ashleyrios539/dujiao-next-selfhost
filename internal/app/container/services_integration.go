@@ -147,6 +147,8 @@ func (c *Container) initIntegrationServices() {
 		telegrambroadcast.NewBotTokenResolver(c.ChannelClientService),
 		webhookinfra.NewBotAPIAdapter(notifybotapi.New()),
 	)
+	// config.yml / .env 的 telegram_webhook 作为网页未配置时的兜底，保证现有部署平滑迁移。
+	c.TelegramWebhookService.WithConfigFallback(c.Config.TelegramWebhook.WebhookURL, c.Config.TelegramWebhook.SecretToken)
 	// 注入 bot 内购买端口（复用商城下单/支付/钱包/商品/身份逻辑）。
 	c.TelegramWebhookService.WithPurchase(webhookcontract.PurchasePorts{
 		Catalog:     &telegramPurchasePorts{products: c.ProductReadService, cats: c.CategoryService, settings: c.SettingService},

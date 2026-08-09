@@ -53,6 +53,12 @@ interface TelegramBotSettingsForm {
   menu: {
     items: MenuItem[]
   }
+  webhook: {
+    url: string
+    secret_token: string
+    secret_set: boolean
+    effective_url: string
+  }
 }
 
 const menuActionTypes: MenuActionType[] = ['builtin', 'url', 'web_app', 'command']
@@ -106,6 +112,12 @@ const createTelegramBotSettingsForm = (): TelegramBotSettingsForm => ({
   },
   menu: {
     items: [],
+  },
+  webhook: {
+    url: '',
+    secret_token: '',
+    secret_set: false,
+    effective_url: '',
   },
 })
 
@@ -220,6 +232,16 @@ export function useTelegramBotSettings() {
       const menu = data.menu as Record<string, unknown> | undefined
       if (menu && Array.isArray(menu.items)) {
         form.value.menu.items = menu.items.map(parseMenuItem)
+      }
+
+      const webhook = data.webhook as Record<string, unknown> | undefined
+      if (webhook) {
+        // url 是数据库值（表单编辑对象）；effective_url 是当前生效值（DB 优先、config 兜底）
+        form.value.webhook.url = (webhook.url as string) ?? ''
+        form.value.webhook.effective_url = (webhook.effective_url as string) ?? ''
+        form.value.webhook.secret_set = (webhook.secret_set as boolean) ?? false
+        // secret 不回显明文，编辑留空 = 保留原值
+        form.value.webhook.secret_token = ''
       }
     } catch {
       notifyError(t('telegramBot.settings.loadFailed'))

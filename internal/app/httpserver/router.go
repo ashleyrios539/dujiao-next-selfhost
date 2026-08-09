@@ -154,7 +154,7 @@ func SetupRouter(cfg *config.Config, c *container.Container) *gin.Engine {
 	channelAffiliateHandler := affiliatebootstrap.NewChannelHandler(c)
 	channelTelegramBotHandler := telegramchanneltransport.NewChannelBotHandler(c.SettingService, c.ChannelClientService)
 
-	telegramWebhookUpdateHandler := webhookhttp.NewUpdateHandler(c.TelegramWebhookService, cfg.TelegramWebhook.SecretToken)
+	telegramWebhookUpdateHandler := webhookhttp.NewUpdateHandler(c.TelegramWebhookService)
 	adminSettingsHandler := settingstransport.NewAdminHandler(c.SettingService)
 	adminPromotionHandler := promotiontransport.NewAdminHandler(c.PromotionAdminService)
 	adminNotificationHandler := notificationtransport.NewAdminHandler(c.SettingService, c.NotificationLogService, c.NotificationService)

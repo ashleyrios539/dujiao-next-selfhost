@@ -40,7 +40,7 @@ func BuildRunner(cfg *config.Config, mode string) (*Runner, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			if dependencies.TelegramWebhookService != nil {
-				if err := dependencies.TelegramWebhookService.ApplyWebhook(ctx, cfg.TelegramWebhook.WebhookURL, cfg.TelegramWebhook.SecretToken); err != nil {
+				if err := dependencies.TelegramWebhookService.ApplyConfiguredWebhook(ctx); err != nil {
 					logger.Warnw("telegram_webhook_apply_failed", "error", err)
 				}
 				if err := dependencies.TelegramWebhookService.SyncRuntimeStatus(ctx); err != nil {

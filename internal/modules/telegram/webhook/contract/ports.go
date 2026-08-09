@@ -71,6 +71,10 @@ type Service interface {
 	Handler
 	// ApplyWebhook 在配置启用时设置 Telegram webhook，禁用时删除。
 	ApplyWebhook(ctx context.Context, webhookURL, secretToken string) error
+	// ApplyConfiguredWebhook 应用当前生效的 webhook 配置（数据库优先，config 兜底），并同步运行时密钥。
+	ApplyConfiguredWebhook(ctx context.Context) error
+	// CurrentSecret 返回当前生效的 webhook secret_token（用于入站请求校验；空表示不校验）。
+	CurrentSecret() string
 	// SyncRuntimeStatus 校验 token 并更新运行时状态。
 	SyncRuntimeStatus(ctx context.Context) error
 }

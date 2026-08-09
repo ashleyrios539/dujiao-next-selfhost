@@ -20,6 +20,17 @@ type TelegramBotConfigSetting struct {
 	Welcome       TelegramBotWelcomeConfig `json:"welcome"`
 	Help          TelegramBotHelpConfig    `json:"help"`
 	Menu          TelegramBotMenuConfig    `json:"menu"`
+	Webhook       TelegramBotWebhookConfig `json:"webhook"`
+}
+
+// TelegramBotWebhookConfig Webhook 配置（网页可管理；留空时回退到 config.yml / .env 的 telegram_webhook 段）
+//
+// 注意：SecretToken 与 SMTP 密码等一致，以明文存在 settings JSON blob 中（见 smtp.go 的 Password）。
+// 它只保护入站 webhook 端点，可在网页随时轮换；如需与 channel_clients 表的 bot_token 一样做
+// AES-256-GCM 静态加密，需要把 app.secret_key 透传给本 schema 层，属于后续增强。
+type TelegramBotWebhookConfig struct {
+	URL         string `json:"url"`
+	SecretToken string `json:"secret_token"`
 }
 
 // TelegramBotBasicConfig 基本信息分组
@@ -220,11 +231,16 @@ func EncodeTelegramBotConfig(setting TelegramBotConfigSetting) map[string]interf
 		"menu": map[string]interface{}{
 			"items": menuItemsToSlice(setting.Menu.Items),
 		},
+		"webhook": map[string]interface{}{
+			"url":          strings.TrimSpace(setting.Webhook.URL),
+			"secret_token": strings.TrimSpace(setting.Webhook.SecretToken),
+		},
 	}
 }
 
-// MaskTelegramBotConfigForAdmin 返回管理端配置
-func MaskTelegramBotConfigForAdmin(setting TelegramBotConfigSetting) jsonmap.JSON {
+// MaskTelegramBotConfigForAdmin 返回管理端配置（secret_token 永不回显，仅返回是否已设置）。
+// url 为数据库值（表单编辑对象）；effectiveURL 为当前生效值（数据库优先、config 兜底）。
+func MaskTelegramBotConfigForAdmin(setting TelegramBotConfigSetting, effectiveURL string, effectiveSecretSet bool) jsonmap.JSON {
 	return jsonmap.JSON{
 		"enabled":        setting.Enabled,
 		"default_locale": setting.DefaultLocale,
@@ -249,6 +265,11 @@ func MaskTelegramBotConfigForAdmin(setting TelegramBotConfigSetting) jsonmap.JSO
 		},
 		"menu": map[string]interface{}{
 			"items": menuItemsToSlice(setting.Menu.Items),
+		},
+		"webhook": map[string]interface{}{
+			"url":           setting.Webhook.URL,
+			"effective_url": effectiveURL,
+			"secret_set":    effectiveSecretSet,
 		},
 	}
 }
@@ -339,6 +360,11 @@ func DecodeTelegramBotConfig(raw jsonmap.JSON, fallback TelegramBotConfigSetting
 
 	if menuRaw, ok := raw["menu"].(map[string]interface{}); ok {
 		next.Menu.Items = readMenuItems(menuRaw["items"])
+	}
+
+	if webhookRaw, ok := raw["webhook"].(map[string]interface{}); ok {
+		next.Webhook.URL = settingsvalue.ReadString(webhookRaw, "url", next.Webhook.URL)
+		next.Webhook.SecretToken = settingsvalue.ReadString(webhookRaw, "secret_token", next.Webhook.SecretToken)
 	}
 
 	return next
@@ -658,4 +684,20 @@ func NormalizeLocalizedText(lt LocalizedText) LocalizedText {
 // NormalizeTelegramBotConfigJSON 是 Registry 使用的原始 JSON 写入策略。
 func NormalizeTelegramBotConfigJSON(raw jsonmap.JSON) jsonmap.JSON {
 	return jsonmap.JSON(normalizeTelegramBotConfigMap(raw))
+}
+
+// SanitizeTelegramBotConfigForGenericRead 供通用 /admin/settings 读取时打码：
+// 移除 webhook.secret_token 明文，仅保留是否已设置的标记。专用路由已走 Mask，这里防通用入口泄露。
+func SanitizeTelegramBotConfigForGenericRead(raw jsonmap.JSON) jsonmap.JSON {
+	if raw == nil {
+		return raw
+	}
+	cfg := DecodeTelegramBotConfig(raw, DefaultTelegramBotConfig())
+	out := EncodeTelegramBotConfig(cfg)
+	if wh, ok := out["webhook"].(map[string]interface{}); ok {
+		wh["secret_set"] = strings.TrimSpace(cfg.Webhook.SecretToken) != ""
+		delete(wh, "secret_token")
+		out["webhook"] = wh
+	}
+	return out
 }

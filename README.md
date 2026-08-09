@@ -174,6 +174,7 @@ git pull && docker compose build && docker compose up -d    # 升级（数据与
 - release 模式下应用日志写入 `./data/logs/app.log`，不打印到容器 stdout；查看运行日志用上面的 `docker compose exec app tail -f /app/logs/app.log`。
 - 配置全部走 `.env` 环境变量，优先级高于 `config.yml`；需要完整自定义时，也可挂载自己的 `config.yml` 到 `/app/config.yml`。
 - 默认附带内置 Redis 容器（数据在 `./data/redis`）。如需外置 Redis，改 `docker-compose.yml` 中 `app` 服务的 `REDIS_HOST` / `QUEUE_HOST`。`REDIS_ENABLED=false` 只关闭 Redis 缓存/限流等功能；**异步队列是否启用由 `QUEUE_ENABLED` 单独控制**（默认开启，依赖 Redis）。
+- Telegram Bot 的 webhook 地址与密钥可在后台「Telegram Bot → 基础设置」里直接配置（保存即生效，无需改 `.env`）；需公网 HTTPS，未配置时回退到 `.env` 的 `TELEGRAM_WEBHOOK_*`。
 - 容器内以 root 运行（与既有 Dockerfile 一致）。如对隔离性有更高要求，可给 `app` 服务加 `user: "10001:10001"`，并先执行 `chown -R 10001:10001 ./data`。
 - 想省去「构建镜像」的时间，可改用预编译二进制部署，见下文「Quick Start (Deploy)」。
 

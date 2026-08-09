@@ -115,6 +115,44 @@ onMounted(() => {
 
     <Card>
       <CardHeader>
+        <CardTitle>{{ t('telegramBot.settings.webhookTitle') }}</CardTitle>
+        <CardDescription>{{ t('telegramBot.settings.webhookDesc') }}</CardDescription>
+      </CardHeader>
+      <CardContent class="space-y-4">
+        <div class="space-y-2">
+          <Label>{{ t('telegramBot.settings.webhookUrl') }}</Label>
+          <Input v-model="form.webhook.url" :placeholder="t('telegramBot.settings.webhookUrlPlaceholder')" />
+          <p
+            v-if="form.webhook.effective_url && form.webhook.url !== form.webhook.effective_url"
+            class="text-xs text-muted-foreground"
+          >
+            {{ t('telegramBot.settings.webhookEffectiveHint', { url: form.webhook.effective_url }) }}
+          </p>
+          <p class="text-xs text-muted-foreground">{{ t('telegramBot.settings.webhookUrlHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center gap-2">
+            <Label>{{ t('telegramBot.settings.webhookSecret') }}</Label>
+            <span
+              v-if="form.webhook.secret_set"
+              class="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+            >
+              {{ t('telegramBot.settings.webhookSecretSet') }}
+            </span>
+          </div>
+          <Input
+            v-model="form.webhook.secret_token"
+            type="password"
+            autocomplete="off"
+            :placeholder="t('telegramBot.settings.webhookSecretPlaceholder')"
+          />
+          <p class="text-xs text-muted-foreground">{{ t('telegramBot.settings.webhookSecretHint') }}</p>
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle>{{ t('telegramBot.settings.welcomeTitle') }}</CardTitle>

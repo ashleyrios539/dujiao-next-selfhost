@@ -1,6 +1,10 @@
 package settingsmessaging
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/dujiao-next/internal/shared/jsonmap"
+)
 
 func TestNormalizeMenuItemsBackfillsBuiltinKeys(t *testing.T) {
 	t.Parallel()
@@ -123,5 +127,59 @@ func TestNormalizeTelegramBotConfigNormalizesHelpTexts(t *testing.T) {
 	summary := first["summary"].(map[string]interface{})
 	if summary["zh-CN"] != "简介" {
 		t.Fatalf("expected trimmed help summary, got=%q", summary["zh-CN"])
+	}
+}
+
+func TestTelegramBotWebhookEncodeDecodeMask(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultTelegramBotConfig()
+	cfg.Webhook.URL = "https://shop.example.com/api/v1/telegram/webhook"
+	cfg.Webhook.SecretToken = "super-secret-token"
+
+	decoded := DecodeTelegramBotConfig(jsonmap.JSON(EncodeTelegramBotConfig(cfg)), DefaultTelegramBotConfig())
+	if decoded.Webhook.URL != cfg.Webhook.URL {
+		t.Fatalf("decoded URL = %q, want %q", decoded.Webhook.URL, cfg.Webhook.URL)
+	}
+	if decoded.Webhook.SecretToken != cfg.Webhook.SecretToken {
+		t.Fatalf("decoded secret = %q, want %q", decoded.Webhook.SecretToken, cfg.Webhook.SecretToken)
+	}
+
+	masked := MaskTelegramBotConfigForAdmin(decoded, decoded.Webhook.URL, decoded.Webhook.SecretToken != "")
+	if _, ok := masked["secret_token"]; ok {
+		t.Fatalf("Mask must not contain top-level secret_token")
+	}
+	wh := masked["webhook"].(map[string]interface{})
+	if _, ok := wh["secret_token"]; ok {
+		t.Fatalf("Mask webhook must not contain secret_token")
+	}
+	if wh["secret_set"] != true {
+		t.Fatalf("expected secret_set=true, got=%v", wh["secret_set"])
+	}
+	if wh["url"] != cfg.Webhook.URL {
+		t.Fatalf("expected webhook url, got=%v", wh["url"])
+	}
+	if wh["effective_url"] != cfg.Webhook.URL {
+		t.Fatalf("expected effective_url, got=%v", wh["effective_url"])
+	}
+}
+
+func TestSanitizeTelegramBotConfigForGenericRead(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultTelegramBotConfig()
+	cfg.Webhook.URL = "https://shop.example.com/webhook"
+	cfg.Webhook.SecretToken = "super-secret-token"
+
+	sanitized := SanitizeTelegramBotConfigForGenericRead(jsonmap.JSON(EncodeTelegramBotConfig(cfg)))
+	wh := sanitized["webhook"].(map[string]interface{})
+	if _, ok := wh["secret_token"]; ok {
+		t.Fatalf("sanitized webhook must not contain secret_token")
+	}
+	if wh["secret_set"] != true {
+		t.Fatalf("expected secret_set=true, got=%v", wh["secret_set"])
+	}
+	if _, ok := wh["url"]; !ok {
+		t.Fatalf("expected webhook.url to be preserved")
 	}
 }
